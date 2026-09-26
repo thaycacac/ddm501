@@ -1,0 +1,11 @@
+# MLflow 2.19.0 is the version Tutorial 02 and Lab 2 use. The model pins match
+# Tutorial 01, so the pickle the trainer writes is the pickle the API reads.
+mlflow==2.19.0
+scikit-learn==1.6.0
+numpy==2.2.1
+pandas==2.2.3
+joblib==1.4.2
+
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4

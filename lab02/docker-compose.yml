@@ -1,0 +1,143 @@
+# Tutorial 02-02 — the stack MLflow actually runs on.
+#
+# Tutorial 02-01 was one MLflow container with SQLite and a folder. 
+#
+#   docker compose up -d --build
+#   docker compose ps                 # mlflow healthy in about a minute
+#   docker compose run --rm trainer python scripts/train_and_register.py
+#   docker compose restart api
+#   curl -s localhost:18012/health
+#
+# MLflow UI   http://127.0.0.1:15020
+# MinIO       http://127.0.0.1:19011     (console; login from .env)
+# Postgres    localhost:15432            (psql -h localhost -p 15432 -U mlflow)
+#
+# On Linux, set UID_GID in .env to what `id -u` prints.
+
+name: ddm501-t02-02
+
+# MLflow reads through boto3
+x-s3-env: &s3-env
+  AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+  AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+  AWS_DEFAULT_REGION: us-east-1
+  MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: ddm501-t02-02-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      # Published so you can look inside with psql. A real deployment would
+      # not expose it.
+      - "15432:5432"
+    volumes:
+      - ./pg-data:/var/lib/postgresql/data
+    healthcheck:
+      # An open port is not a database that will accept a connection. Postgres
+      # starts, runs initdb, restarts itself, and only then listens for real.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+
+  minio:
+    image: ${MINIO_IMAGE}
+    container_name: ddm501-t02-02-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "19010:9000"      # S3 API
+      - "19011:9001"      # web console
+    volumes:
+      - ./minio-data:/data
+    restart: unless-stopped
+
+  createbucket:
+    build: .
+    image: ddm501-t02-02:2.19.0
+    depends_on: [minio]
+    environment:
+      <<: *s3-env
+      MLFLOW_BUCKET: ${MLFLOW_BUCKET}
+    command: ["python", "scripts/init_bucket.py"]
+    restart: "no"
+
+  mlflow:
+    build: .
+    image: ddm501-t02-02:2.19.0
+    container_name: ddm501-t02-02-mlflow
+    depends_on:
+      postgres:
+        condition: service_healthy
+      createbucket:
+        # Not "started" -- "finished successfully". The first log_model fails
+        # on a missing bucket, and it fails after the model has trained.
+        condition: service_completed_successfully
+    environment:
+      <<: *s3-env
+    command:
+      - mlflow
+      - server
+      - --backend-store-uri
+      - postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - --default-artifact-root
+      - s3://${MLFLOW_BUCKET}/
+      - --no-serve-artifacts
+      - --host
+      - 0.0.0.0
+      - --port
+      - "5000"
+    ports:
+      - "15020:5000"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:5000/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 40s
+    restart: unless-stopped
+
+  api:
+    build: .
+    image: ddm501-t02-02:2.19.0
+    container_name: ddm501-t02-02-api
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "18012:8000"
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    environment:
+      <<: *s3-env
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MODEL_NAME: ${MODEL_NAME}
+      MODEL_VERSION: ${MODEL_VERSION}
+    user: "${UID_GID:-0}:0"
+    restart: unless-stopped
+
+  trainer:
+    build: .
+    image: ddm501-t02-02:2.19.0
+    profiles: ["tools"]
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    environment:
+      <<: *s3-env
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MODEL_NAME: ${MODEL_NAME}
+    user: "${UID_GID:-0}:0"
+    volumes:
+      - ./scripts:/work/scripts
+    command: ["python", "scripts/train_and_register.py"]

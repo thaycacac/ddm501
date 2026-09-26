@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+.DS_Store
+.env
+!.env.example
+pg-data/
+minio-data/
+sample_request.json
+mlflow.db
+mlruns/
+mlartifacts/

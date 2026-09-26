@@ -1,0 +1,73 @@
+# Tutorial 02-01 — a model comes out of the registry, not off the disk.
+#
+#   docker compose up -d --build
+#   docker compose ps                 # mlflow healthy in about 40 s
+#   docker compose run --rm trainer python scripts/train_and_register.py
+#   docker compose restart api        # the API reads .env at start-up
+#
+#   curl -s localhost:18011/health
+#
+# On Linux, set UID_GID in .env to what `id -u` prints. macOS and Windows can
+# leave it at 0.
+
+name: ddm501-t02-01
+
+services:
+
+  mlflow:
+    build: .
+    image: ddm501-t02-01:2.19.0
+    container_name: ddm501-t02-01-mlflow
+    ports:
+      # 15010: Lab 2 owns 5000, Tutorial 02's Docker path owns 15000, and on
+      # macOS AirPlay Receiver also holds 5000.
+      - "15010:5000"
+    user: "${UID_GID:-0}:0"
+    volumes:
+      # The database and the artefacts live on your disk, so `down` does not
+      # throw away the registry. Shipped with a .gitkeep so the directory
+      # already exists and already belongs to you.
+      - ./mlflow-data:/work/mlflow-data
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:5000/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    restart: unless-stopped
+
+  api:
+    build: .
+    image: ddm501-t02-01:2.19.0
+    container_name: ddm501-t02-01-api
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "18011:8000"
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      # The two lines from .env, and the only configuration this service has.
+      MODEL_NAME: ${MODEL_NAME}
+      MODEL_VERSION: ${MODEL_VERSION}
+    user: "${UID_GID:-0}:0"
+    restart: unless-stopped
+
+  trainer:
+    build: .
+    image: ddm501-t02-01:2.19.0
+    # A profile keeps it out of `up`: it is a job you run, not a service.
+    profiles: ["tools"]
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MODEL_NAME: ${MODEL_NAME}
+    user: "${UID_GID:-0}:0"
+    volumes:
+      # Edit a script and re-run without rebuilding.
+      - ./scripts:/work/scripts
+    command: ["python", "scripts/train_and_register.py"]

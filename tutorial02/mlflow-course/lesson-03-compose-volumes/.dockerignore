@@ -1,0 +1,5 @@
+.gitkeep
+__pycache__
+*.pyc
+.DS_Store
+data-on-host/visits.log

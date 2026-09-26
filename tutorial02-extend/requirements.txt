@@ -1,0 +1,8 @@
+# Aligned with Tutorial 02 / Lab 2 so one venv can cover both.
+mlflow==2.19.0
+scikit-learn==1.6.0
+numpy==2.2.1
+pandas==2.2.3
+joblib==1.4.2
+boto3==1.37.14
+python-dotenv==1.0.1

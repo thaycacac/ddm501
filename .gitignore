@@ -1,0 +1,65 @@
+# === OS / IDE ===
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+
+# === Secrets / local env (keep *.example tracked) ===
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# === MLflow / model artifacts (regenerate by running tutorials) ===
+mlflow.db
+*.db
+mlruns/
+mlartifacts/
+mlflow-data/*
+!mlflow-data/.gitkeep
+artifacts/*.png
+artifacts/*.pkl
+**/models/*.joblib
+**/models/*.pkl
+!**/models/.gitkeep
+sample_request.json
+
+# === Docker volume data (local) ===
+pg-data/
+minio-data/
+
+# === Airflow ===
+.airflow/
+airflow.db
+airflow-webserver.pid
+webserver_config.py
+standalone_admin_password.txt
+**/data/staging/
+**/data/raw/*.orig
+**/logs/
+!**/logs/.gitkeep
+
+# === Misc runtime ===
+*.log
+.ipynb_checkpoints/
+_tmp/

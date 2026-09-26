@@ -1,0 +1,2 @@
+# Thư mục này sẽ được bind-mount vào /data trong container.
+# Tồn tại sẵn (và thuộc về bạn) — tránh Docker tạo thư mục với quyền root (điểm T02 nhấn mạnh trên Linux).

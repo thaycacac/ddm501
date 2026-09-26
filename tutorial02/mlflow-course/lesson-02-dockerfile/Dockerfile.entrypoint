@@ -1,0 +1,28 @@
+# =============================================================================
+# Biến thể ENTRYPOINT — so với Dockerfile (chỉ dùng CMD)
+# =============================================================================
+#
+# ENTRYPOINT = phần "cố định hơn" của lệnh.
+# CMD        = arg mặc định gắn vào ENTRYPOINT.
+#
+#   docker run IMAGE              →  python app.py
+#   docker run IMAGE --version    →  python --version   (arg gắn thêm)
+#
+# Với Dockerfile chỉ có CMD ["python","app.py"]:
+#   docker run IMAGE --version    →  cố chạy binary tên "--version" (thường lỗi)
+#   docker run IMAGE python --version → thay CẢ CMD bằng python --version
+#
+# Build:
+#   docker build -f Dockerfile.entrypoint -t mlflow-course-hello:entrypoint .
+# =============================================================================
+
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1 \
+    PORT=8000
+
+WORKDIR /app
+COPY app.py .
+
+ENTRYPOINT ["python"]
+CMD ["app.py"]

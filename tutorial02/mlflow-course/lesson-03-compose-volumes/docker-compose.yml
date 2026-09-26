@@ -1,0 +1,64 @@
+# =============================================================================
+# BÀI 03 — docker-compose.yml
+# =============================================================================
+#
+# Compose = mô tả nhiều service + mạng + volume bằng YAML, thay vì gõ
+# docker run dài. Tutorial 02 dùng file tương tự (mlflow + runner).
+#
+# Lệnh chính bạn sẽ gặp:
+#   docker compose up -d --build   # build + chạy nền
+#   docker compose ps              # status (kể cả health)
+#   docker compose logs -f web     # xem log
+#   docker compose down            # dừng + xóa container/network (volume bind giữ nguyên)
+#
+# Khái niệm trong file này:
+#   ports       — map HOST:CONTAINER (như -p)
+#   volumes     — bind mount ./data-on-host → /data trong container
+#   healthcheck — Compose/Docker hỏi /health để biết service "sẵn sàng"
+#   networks    — mặc định compose tạo network; service gọi nhau bằng TÊN service
+# =============================================================================
+
+name: mlflow-course-03
+
+services:
+
+  # Tên service = DNS name trong network compose (vd: http://web:8000 từ service khác).
+  web:
+    build: .
+    image: mlflow-course-03-web:1
+    container_name: mlflow-course-03-web
+    ports:
+      # Máy bạn :18003 → container :8000
+      - "18003:8000"
+    environment:
+      PORT: "8000"
+      DATA_DIR: /data
+    volumes:
+      # BIND MOUNT: thư mục trên máy bạn gắn vào container.
+      # File trong /data vẫn còn trên ./data-on-host sau "compose down".
+      # Tutorial 02: ./mlflow-data:/work/mlflow-data  (DB + artifacts).
+      - ./data-on-host:/data
+    healthcheck:
+      # Giống T02: python:slim không có curl → dùng urllib.
+      # interval/retries/start_period: đợi app lên trước khi đánh unhealthy.
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health').read()"]
+      interval: 5s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+
+  # Service thứ hai: chứng minh gọi nhau bằng tên service (không cần localhost).
+  # profiles: ["tools"] → KHÔNG tự chạy với "compose up"; chỉ khi
+  #   docker compose run --rm hit ...
+  # (Tutorial 02: service runner cũng dùng profiles: ["tools"].)
+  hit:
+    image: mlflow-course-03-web:1
+    profiles: ["tools"]
+    depends_on:
+      web:
+        condition: service_healthy
+    # Trong network compose, host "web" trỏ tới service web.
+    entrypoint: ["python", "-c"]
+    command:
+      - "import urllib.request; print(urllib.request.urlopen('http://web:8000/').read().decode())"

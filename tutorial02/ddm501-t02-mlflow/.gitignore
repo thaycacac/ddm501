@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+
+# The venv path writes these at the project root.
+mlflow.db
+mlartifacts/
+artifacts/*.png
+
+# The Docker path keeps everything under one directory instead. The directory
+# itself is tracked (see the .gitkeep) because Docker must not be the one to
+# create it -- it would create it as root.
+mlflow-data/*
+!mlflow-data/.gitkeep
+
+# Your own uid. Local to your machine, not to the tutorial.
+.env

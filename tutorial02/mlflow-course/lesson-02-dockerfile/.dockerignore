@@ -1,0 +1,7 @@
+.gitkeep
+practice.sh
+CHECKPOINT_ANSWERS.md
+README.md
+__pycache__
+*.pyc
+.DS_Store

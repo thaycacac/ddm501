@@ -96,25 +96,32 @@ async def health_check():
 @app.post("/predict", response_model=PredictionResponse, tags=["Prediction"])
 async def predict(application: CreditApplication):
     """Score one applicant and return the underwriting decision."""
-    # TODO: implement
-    pass
+    if model is None or not model.is_loaded():
+        raise HTTPException(status_code=503, detail="Model is not loaded")
+    try:
+        result = model.score(application.model_dump())
+        return PredictionResponse(**result)
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Prediction failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Internal scoring error") from exc
 
-
-# =============================================================================
-# TODO 2: Implement the /predict/batch endpoint
-# =============================================================================
-# Requirements:
-#   - same 503 guard as above
-#   - convert each application with .model_dump()
-#   - call model.score_batch(...) ONCE for the whole list, not once per item
-#   - return BatchPredictionResponse(predictions=[...], total_count=len(...))
-#   - results must come back in the same order as the request
 
 @app.post("/predict/batch", response_model=BatchPredictionResponse, tags=["Prediction"])
 async def predict_batch(request: BatchPredictionRequest):
     """Score up to 500 applicants in one call."""
-    # TODO: implement
-    pass
+    if model is None or not model.is_loaded():
+        raise HTTPException(status_code=503, detail="Model is not loaded")
+    try:
+        payloads = [app.model_dump() for app in request.applications]
+        results = model.score_batch(payloads)
+        predictions = [PredictionResponse(**item) for item in results]
+        return BatchPredictionResponse(
+            predictions=predictions,
+            total_count=len(predictions),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("Batch prediction failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Internal scoring error") from exc
 
 
 # =============================================================================

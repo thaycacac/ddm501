@@ -1,0 +1,13 @@
+# The build copies requirements.txt, scripts/ and app/ only.
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+pg-data/
+minio-data/
+*.pdf
+*.docx
+*.zip
+.git/
+.gitignore
+.DS_Store

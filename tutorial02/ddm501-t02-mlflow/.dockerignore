@@ -1,0 +1,25 @@
+# Everything the image does not need. The build only COPYs requirements.txt and
+# scripts/, so this is mostly about not shipping your run history and your venv
+# to the daemon every time you type `docker compose build`.
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+
+# Local run state, from the venv path and from the Docker path. Copying these
+# in would also risk baking a stale mlflow.db into an image.
+mlruns/
+mlartifacts/
+mlflow.db
+mlflow-data/
+artifacts/
+
+# The manual and the zip. Big, and nothing in a container reads them.
+*.pdf
+*.docx
+*.zip
+
+.git/
+.gitignore
+.env
+.DS_Store

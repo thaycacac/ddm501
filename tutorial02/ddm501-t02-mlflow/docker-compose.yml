@@ -1,0 +1,80 @@
+# Tutorial 02 the Docker way -- optional. 
+#
+#   docker compose up -d --build          # build once, then start the server
+#   docker compose ps                     # wait for STATUS = healthy (~40 s)
+#   open http://127.0.0.1:15000
+#
+#   docker compose run --rm runner python scripts/step1_track.py
+#   docker compose run --rm runner python scripts/step2_compare.py
+#   docker compose run --rm runner python scripts/step3_register.py
+#   docker compose run --rm runner python scripts/step4_load_and_verify.py
+#
+#   docker compose down                   # stop; mlflow-data/ survives
+#
+# On Linux, first create a .env file next to this one (copy .env.example):
+#     MLFLOW_UID=1000                     # the number `id -u` prints
+#
+# You can also keep the venv and point it at this server instead of running
+# your own:  export MLFLOW_TRACKING_URI=http://127.0.0.1:15000
+
+name: ddm501-t02
+
+services:
+
+  mlflow:
+    build: .
+    image: ddm501-t02-mlflow:2.19.0
+    container_name: ddm501-t02-mlflow
+    ports:
+      # 15000, not 5000, for two reasons. Lab 2's MLflow owns 5000, and on
+      # macOS 12+ so does AirPlay Receiver -- which is why "port 5000 already
+      # in use" on a Mac is usually not another MLflow at all.
+      - "15000:5000"
+    # Same story as Tutorial 03: on Linux the container writes to the bind mount
+    # as whatever uid it runs as, and root-owned files inside your own project
+    # folder are a nuisance you cannot delete without sudo. Set MLFLOW_UID in
+    # .env to your own uid. The default is right on macOS and Windows.
+    user: "${MLFLOW_UID:-0}:0"
+    volumes:
+      # The database and the artifacts, on your disk rather than inside the
+      # container, so `docker compose down` does not throw away your runs. The
+      # directory ships with a .gitkeep precisely so it already exists and
+      # already belongs to you -- if Docker has to create it, it creates it as
+      # root and the non-root case above breaks on the first write.
+      - ./mlflow-data:/work/mlflow-data
+    # The healthcheck lives here rather than in the Dockerfile because the
+    # image has two jobs, and the runner container listens on nothing. A
+    # HEALTHCHECK baked into a dual-purpose image marks the healthy container
+    # unhealthy. python:slim has no curl, and there is no reason to apt-get one
+    # in when Python can make the request itself.
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:5000/health').read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    restart: unless-stopped
+
+  runner:
+    build: .
+    image: ddm501-t02-mlflow:2.19.0
+    # A profile keeps this out of `docker compose up`: it is a thing you run,
+    # not a thing that runs. `docker compose run` turns its own profile on.
+    profiles: ["tools"]
+    depends_on:
+      mlflow:
+        # step1 against a server that is still migrating its database fails
+        # with a connection error the student reads as "my script is broken".
+        condition: service_healthy
+    environment:
+      # _common.py reads this and falls back to 127.0.0.1:5000. Inside the
+      # compose network the server is reachable by service name.
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    user: "${MLFLOW_UID:-0}:0"
+    volumes:
+      # Bind-mounted over the copies baked into the image, so an edit takes
+      # effect on the next run with no rebuild.
+      - ./scripts:/work/scripts
+      - ./artifacts:/work/artifacts
+    command: ["python", "scripts/step1_track.py"]
