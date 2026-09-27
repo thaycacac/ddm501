@@ -1,0 +1,40 @@
+# =============================================================================
+# BÀI 02 — giống bài 01, nhưng KHÔNG build: dùng lại image airflow-course:2.8.4
+# =============================================================================
+#
+#   docker compose up -d
+#   docker compose ps                # đợi (healthy)
+#   → http://127.0.0.1:28080  admin / admin
+# =============================================================================
+
+name: airflow-course-02
+
+services:
+  airflow:
+    image: airflow-course:2.8.4      # build ở bài 01 — không có "build:" ở đây
+    container_name: airflow-course-02-airflow
+    command: standalone
+    ports:
+      - "28080:8080"
+    environment:
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
+      AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL: "30"
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: admin
+    user: "${AIRFLOW_UID:-50000}:0"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./data:/opt/airflow/data
+      - ./logs:/opt/airflow/logs
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+    restart: unless-stopped
