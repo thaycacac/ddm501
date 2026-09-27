@@ -1,0 +1,12 @@
+{{/* Telegram message rendered with parse_mode HTML */}}
+{{ define "telegram.mlops.message" -}}
+{{ if eq .Status "firing" }}<b>[FIRING:{{ .Alerts.Firing | len }}]</b>{{ else }}<b>[RESOLVED]</b>{{ end }} {{ .CommonLabels.severity | toUpper }} · {{ .CommonLabels.component }}
+{{ range .Alerts }}
+<b>{{ .Labels.alertname }}</b> ({{ .Status }})
+{{ with .Annotations.summary }}{{ . }}
+{{ end }}{{ with .Annotations.description }}{{ . }}
+{{ end }}Bắt đầu: {{ .StartsAt.Local.Format "2006-01-02 15:04:05 MST" }}{{ if eq .Status "resolved" }}
+Kết thúc: {{ .EndsAt.Local.Format "2006-01-02 15:04:05 MST" }}{{ end }}{{ with .Labels.instance }}
+Instance: {{ . }}{{ end }}
+{{ end }}
+{{- end }}

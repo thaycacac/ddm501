@@ -49,7 +49,7 @@ groups:
 
       # API down
       - alert: APIDown
-        expr: up{job="fastapi_model_server"} == 0
+        expr: up{job="model-api"} == 0
         for: 2m
         labels:
           severity: critical
@@ -194,7 +194,7 @@ groups:
       # Airflow DAG failures
       - alert: AirflowDAGFailed
         expr: |
-          increase(airflow_dag_run_failed_total[1h]) > 3
+          increase(airflow_dagrun_duration_failed_seconds_count[1h]) > 3
         for: 5m
         labels:
           severity: warning

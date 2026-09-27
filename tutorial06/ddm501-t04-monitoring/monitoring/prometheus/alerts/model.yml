@@ -64,6 +64,7 @@ groups:
         labels: {severity: warning}
         annotations:
           summary: "Share of malignant predictions has moved a long way"
+          # $value is the expr result, i.e. the distance from baseline, not the share.
           description: >-
-            Now {{ $value | humanizePercentage }} against a baseline of 37%.
+            {{ $value | humanizePercentage }} away from a baseline of 37%.
             Either the population changed or the inputs did.

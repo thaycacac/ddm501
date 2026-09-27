@@ -11,16 +11,17 @@ global:
     cluster: 'production'
     env: 'ml-monitoring'
 
-# Alertmanager configuration (optional)
-# alerting:
-#   alertmanagers:
-#     - static_configs:
-#         - targets:
-#           - alertmanager:9093
+# Alertmanager configuration (routes alerts to Telegram)
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
 
 # Load rules once and periodically evaluate them
+# (files are mounted into /etc/prometheus/ by docker-compose)
 rule_files:
-  # - "alerts.yml"
+  - "alerts.yml"            # API / model / system / MLflow / Airflow alerts
   - "evidently_alerts.yml"  # Evidently AI drift detection alerts
 
 # Scrape configurations
@@ -79,13 +80,21 @@ scrape_configs:
   # ==========================================
   # AIRFLOW (via StatsD Exporter)
   # ==========================================
-  # Uncomment if using Airflow
-  # - job_name: 'airflow'
-  #   static_configs:
-  #     - targets: ['statsd-exporter:9102']
-  #       labels:
-  #         service: 'airflow'
-  #         application: 'orchestration'
+  - job_name: 'airflow'
+    static_configs:
+      - targets: ['statsd-exporter:9102']
+        labels:
+          service: 'airflow'
+          application: 'orchestration'
+
+  # ==========================================
+  # ALERTMANAGER
+  # ==========================================
+  - job_name: 'alertmanager'
+    static_configs:
+      - targets: ['alertmanager:9093']
+        labels:
+          service: 'alertmanager'
 
   # ==========================================
   # NODE EXPORTER (System Metrics)

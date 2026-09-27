@@ -1,0 +1,41 @@
+# ============================================
+# ALERTMANAGER CONFIGURATION
+# ============================================
+# __TELEGRAM_CHAT_ID__ is replaced with TELEGRAM_CHAT_ID from .env when the container starts.
+# The bot token is read from bot_token_file, mounted from ./secrets/telegram_bot_token (gitignored).
+
+global:
+  resolve_timeout: 5m
+
+templates:
+  - /etc/alertmanager/templates/*.tmpl
+
+route:
+  receiver: telegram
+  group_by: ['severity', 'component']
+  group_wait: 30s
+  group_interval: 2m
+  repeat_interval: 4h
+  routes:
+    - receiver: telegram
+      matchers:
+        - severity="critical"
+      repeat_interval: 1h
+
+inhibit_rules:
+  # A critical alert silences the matching warning for the same component
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
+    equal: ['alertname', 'component']
+
+receivers:
+  - name: telegram
+    telegram_configs:
+      - bot_token_file: /etc/alertmanager/secrets/telegram_bot_token
+        chat_id: __TELEGRAM_CHAT_ID__
+        send_resolved: true
+        parse_mode: HTML
+        disable_notifications: false
+        message: '{{ template "telegram.mlops.message" . }}'

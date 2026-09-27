@@ -16,6 +16,8 @@ A production-ready machine learning monitoring system using MLFlow, Prometheus, 
 - [Training Models](#-training-models)
 - [Monitoring & Dashboards](#-monitoring--dashboards)
 - [Evidently & Drift Monitoring](#-evidently--drift-monitoring)
+- [Airflow Orchestration](#airflow-orchestration)
+- [Telegram Alerting](#telegram-alerting)
 - [Simulations & Load Testing](#-simulations--load-testing)
 - [API Documentation](#-api-documentation)
 - [Troubleshooting](#-troubleshooting)
@@ -284,6 +286,13 @@ These scripts will:
 | **MinIO Console** | http://localhost:9001 | minio / minio123 |
 | **Evidently API & Reports** | http://localhost:8001 | - (see `/docs`, `/reports`) |
 | **API Docs** | http://localhost:8000/docs | - |
+| **Airflow** | http://localhost:8080 | `AIRFLOW_ADMIN_USER` / `AIRFLOW_ADMIN_PASSWORD` from `.env` |
+| **Alertmanager** | http://localhost:9093 | - |
+| **StatsD exporter (Airflow metrics)** | http://localhost:9102/metrics | - |
+
+> All host ports are configurable in `.env` (`POSTGRES_PORT`, `MLFLOW_PORT`, `API_PORT`, `AIRFLOW_PORT`, ...).
+> On macOS port 5000 is often taken by AirPlay Receiver: set e.g. `MLFLOW_PORT=15000` and run the host
+> training script with `MLFLOW_TRACKING_URI=http://localhost:15000`.
 
 ---
 
@@ -520,7 +529,131 @@ Examples:
 - `HighMissingValues` – missing-values ratio > 20%
 - `SlowDriftAnalysis` – analysis taking too long
 
-These alerts can be wired to Alertmanager / Slack / email as needed.
+General API / model / MLflow / Airflow rules live in `config/grafana/alerts.yml`. Both files are mounted
+into Prometheus and firing alerts are routed through Alertmanager to Telegram (see [Telegram Alerting](#telegram-alerting)).
+
+---
+
+## Airflow Orchestration
+
+Airflow 2.10 (`LocalExecutor`) runs next to the monitoring stack and automates health checks, drift
+monitoring and retraining.
+
+| Service | Purpose |
+|---------|---------|
+| `airflow-init` | One-shot: creates the `airflow` database in the shared Postgres (if missing), runs `airflow db migrate`, creates the admin user |
+| `airflow-webserver` | UI on `http://localhost:${AIRFLOW_PORT:-8080}` |
+| `airflow-scheduler` | Schedules and runs tasks (LocalExecutor) |
+| `statsd-exporter` | Exposes Airflow StatsD metrics to Prometheus (job `airflow`, mapping in `config/statsd_mapping.yml`) |
+
+The image is built from `airflow/Dockerfile` (adds `mlflow-skinny`, `scikit-learn`, `pandas`, `boto3`).
+DAGs are mounted from `./airflow_dags` and `./scripts` is mounted at `/opt/airflow/scripts` (on `PYTHONPATH`),
+so the retrain DAG reuses `scripts/training.py`.
+
+### Start
+
+```bash
+# Airflow variables in .env (see .env.example)
+AIRFLOW_PORT=8080
+AIRFLOW_ADMIN_USER=admin
+AIRFLOW_ADMIN_PASSWORD=change-me
+AIRFLOW_UID=50000
+
+docker compose up -d
+docker compose ps                       # airflow-init should be "Exited (0)"
+docker compose logs airflow-init        # DB creation + migration + admin user
+docker compose exec airflow-scheduler airflow dags list
+docker compose exec airflow-scheduler airflow dags list-import-errors
+```
+
+### DAGs
+
+| DAG | Schedule | What it does |
+|-----|----------|--------------|
+| `service_health_check` | every 15 minutes | Calls `/health` on the API, MLflow and Evidently. If any service is down (or the API has no model loaded) it sends **one** Telegram message listing the failing services and marks the run failed |
+| `drift_monitoring` | hourly | Calls Evidently `POST /analyze`. Drift = Evidently `dataset_drift` **or** share of drifted features > `EVIDENTLY_DRIFT_THRESHOLD`. On drift: Telegram alert + trigger `model_retrain`. If Evidently has no reference/production data yet the run is skipped |
+| `model_retrain` | manual / triggered | Trains with `scripts/training.py`, registers a new version, applies a quality gate (`min_accuracy`, default `RETRAIN_MIN_ACCURACY`), promotes to `Production`, calls API `POST /model/reload`, reports version + metrics to Telegram |
+
+All DAGs share `default_args` (`airflow_dags/utils/common.py`) with `on_failure_callback` that sends a
+Telegram message containing DAG, task, run ID, logical date, error and a link to the task log.
+
+```bash
+# Trigger a retrain manually
+docker compose exec airflow-scheduler airflow dags trigger model_retrain -c '{"reason": "manual test"}'
+
+# Force a drift check with a custom threshold
+docker compose exec airflow-scheduler airflow dags trigger drift_monitoring -c '{"threshold": 0.05}'
+
+# Intentionally fail a task (quality gate cannot pass) -> Telegram failure alert
+docker compose exec airflow-scheduler airflow dags trigger model_retrain -c '{"min_accuracy": 1.01, "reason": "failure alert test"}'
+```
+
+---
+
+## Telegram Alerting
+
+Two paths deliver alerts to the same Telegram chat:
+
+1. **Airflow** – `airflow_dags/utils/telegram_alert.py` calls the Bot API `sendMessage` (10s timeout).
+   Telegram/network errors are logged and never fail a DAG.
+2. **Prometheus → Alertmanager** – `prom/alertmanager` with native `telegram_configs`
+   (`config/alertmanager/alertmanager.yml`, template `config/alertmanager/templates/telegram.tmpl`).
+   Alerts are grouped by `severity` and `component`, `send_resolved: true` sends a message when the alert clears.
+
+### Configure the bot token and chat ID
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) and add it to the group.
+2. Put the values in `.env` (gitignored – never commit a real token):
+
+   ```bash
+   TELEGRAM_BOT_TOKEN=<token from BotFather>
+   TELEGRAM_CHAT_ID=-1234567890
+   ```
+
+3. Sync the Alertmanager token file and send a test message:
+
+   ```bash
+   ./scripts/test_telegram.sh
+   # ✅ Sent test message to chat -1234567890 (message_id=...)
+   ```
+
+   Alertmanager reads the token via `bot_token_file` from `secrets/telegram_bot_token` (gitignored, created by
+   the script). `TELEGRAM_CHAT_ID` is injected into the Alertmanager config when the container starts.
+   Run the script **before** `docker compose up`, otherwise Docker creates `secrets/telegram_bot_token` as a directory.
+
+### Find / refresh the chat ID
+
+If Telegram answers `chat not found`, or the group was upgraded to a supergroup (IDs then start with `-100`):
+
+```bash
+# Send any message in the group, then:
+./scripts/test_telegram.sh --chat-ids
+```
+
+Update `TELEGRAM_CHAT_ID` in `.env` and recreate the services that use it:
+
+```bash
+docker compose up -d --force-recreate alertmanager airflow-webserver airflow-scheduler
+```
+
+### Test the whole alert chain
+
+```bash
+# 1. Direct Bot API test
+./scripts/test_telegram.sh
+
+# 2. Airflow failure callback
+docker compose exec airflow-scheduler airflow dags trigger model_retrain -c '{"min_accuracy": 1.01}'
+
+# 3. Prometheus -> Alertmanager -> Telegram (APIDown fires after ~2 minutes, resolves after restart)
+docker compose stop api
+curl -s http://localhost:9093/api/v2/alerts | python3 -m json.tool | grep alertname
+docker compose start api
+
+# Inspect active alerts / config
+open http://localhost:9090/alerts
+open http://localhost:9093
+```
 
 ---
 
@@ -760,8 +893,20 @@ ml-monitoring/
 │   └── requirements.txt
 ├── mlflow/                       # MLFlow server
 │   └── Dockerfile
+├── airflow/                      # Airflow image (extra deps) + init script
+│   ├── Dockerfile
+│   ├── init_airflow.sh
+│   └── requirements.txt
+├── airflow_dags/                 # DAGs mounted into /opt/airflow/dags
+│   ├── service_health_check.py
+│   ├── drift_monitoring.py
+│   ├── model_retrain.py
+│   └── utils/                    # telegram_alert.py, common.py (default_args)
 ├── config/                       # Configuration files
-│   ├── prometheus.yml            # Prometheus scrape config
+│   ├── prometheus.yml            # Prometheus scrape + alerting config
+│   ├── prometheus/evidently_alerts.yml
+│   ├── alertmanager/             # Alertmanager config + Telegram template
+│   ├── statsd_mapping.yml        # Airflow StatsD -> Prometheus mapping
 │   └── grafana/
 │       ├── provisioning/
 │       │   ├── datasources/      # Grafana datasources
@@ -772,8 +917,10 @@ ml-monitoring/
 │       │   └── ml-monitoring.json
 │       └── alerts.yml            # Alert rules
 ├── scripts/                      # Training and utility scripts
-│   ├── training.py               # Model training script
+│   ├── training.py               # Model training script (also used by model_retrain DAG)
+│   ├── test_telegram.sh          # Telegram test + Alertmanager token sync
 │   └── requirements.txt
+├── secrets/                      # Local only (gitignored): telegram_bot_token
 ├── docker-compose.yml            # Main orchestration file
 ├── .env.example                  # Environment template
 ├── .env                          # Active environment config
