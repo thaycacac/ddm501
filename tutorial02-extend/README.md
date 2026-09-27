@@ -80,6 +80,7 @@ docker compose down -v             # also delete Postgres / MinIO / MLflow volum
 
 ## Port clashes
 
-If something already owns 5432 / 9000 / 9001 / 5001, change the matching
+Postgres is published on host port **15432** (a local Postgres usually owns 5432).
+If something already owns 15432 / 9000 / 9001 / 5001, change the matching
 `*_PORT` values in `.env` and set `MLFLOW_TRACKING_URI` /
 `MLFLOW_S3_ENDPOINT_URL` to the same host ports.

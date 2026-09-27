@@ -1,5 +1,7 @@
 # Aligned with Tutorial 02 / Lab 2 so one venv can cover both.
 mlflow==2.19.0
+# MLflow 2.19 imports FallbackAsyncAdaptedQueuePool, removed in SQLAlchemy 2.1.
+sqlalchemy<2.1
 scikit-learn==1.6.0
 numpy==2.2.1
 pandas==2.2.3

@@ -3,8 +3,8 @@ BÀI 12 — Docker hóa MLflow = ghép bài 01–03 (Docker) + bài 04–06 (ser
 
 Bạn sẽ đọc file THẬT của Tutorial 02 (không copy lan man):
 
-  ../../ddm501-t02-mlflow/Dockerfile
-  ../../ddm501-t02-mlflow/docker-compose.yml
+  ../tutorial02/ddm501-t02-mlflow/Dockerfile
+  ../tutorial02/ddm501-t02-mlflow/docker-compose.yml
 
 Ánh xạ đã học:
 

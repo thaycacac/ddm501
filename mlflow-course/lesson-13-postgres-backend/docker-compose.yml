@@ -1,0 +1,52 @@
+# =============================================================================
+# BÀI 13 — docker-compose.yml: chỉ MỘT service — Postgres
+# =============================================================================
+#
+# Các bài sau thêm dần từng mảnh; tới bài 16 file compose của bạn sẽ tương đương
+# tutorial02-extend/docker-compose.yml. So sánh với dòng 5–22 của file đó.
+#
+# Lệnh chính (giống bài 03):
+#   docker compose up -d                                   # chạy nền
+#   docker compose ps                                      # status (kể cả health)
+#   docker compose exec postgres psql -U mlflow -d mlflow  # vào Postgres
+#   docker compose down                                    # dừng, GIỮ volume
+#   docker compose down -v                                 # dừng, XÓA volume (mất dữ liệu)
+#
+# Khác bài 03: bài 03 dùng BIND MOUNT (./data-on-host); bài này dùng NAMED
+# VOLUME do Docker quản lý — giống tutorial02-extend.
+# =============================================================================
+
+name: mlflow-course-13
+
+services:
+
+  postgres:
+    image: postgres:13 # cùng image với tutorial02-extend
+    container_name: mlflow-course-13-postgres
+    environment:
+      # Image postgres đọc 3 biến này ĐÚNG MỘT LẦN, lúc thư mục dữ liệu còn trống
+      # (lần khởi động đầu tiên) để tạo user + database. Đổi sau đó KHÔNG có tác
+      # dụng cho tới khi xóa volume.
+      POSTGRES_USER: mlflow
+      POSTGRES_PASSWORD: mlflow
+      POSTGRES_DB: mlflow
+    ports:
+      # host:container. Bên trong container Postgres luôn nghe 5432.
+      # Ở host dùng 25432: 5432 đã bị Postgres cài trên máy chiếm, còn
+      # 15432 thì stack tutorial02-extend dùng.
+      - "25432:5432"
+    volumes:
+      # /var/lib/postgresql/data = nơi Postgres ghi dữ liệu trong container.
+      # Gắn vào named volume → `docker compose down` không mất dữ liệu,
+      # chỉ `docker compose down -v` mới xóa.
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      # pg_isready có sẵn trong image: trả 0 khi Postgres nhận kết nối.
+      # Bài 16 sẽ dùng trạng thái "healthy" này để MLflow chờ Postgres.
+      test: ["CMD", "pg_isready", "-U", "mlflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pg_data:

@@ -1,0 +1,70 @@
+# =============================================================================
+# BÀI 14 — docker-compose.yml: MinIO (kho file S3) + minio-init (tạo bucket)
+# =============================================================================
+#
+# So sánh với tutorial02-extend/docker-compose.yml:
+#   service minio       ↔ dòng 27–46
+#   service minio-init  ↔ dòng 95–111
+#
+# Lệnh chính:
+#   docker compose up -d minio      # CHỈ bật service minio (bước 1–2)
+#   docker compose up -d            # bật tất cả, kể cả minio-init (bước 3)
+#   docker compose ps -a            # -a: hiện cả container đã Exited (minio-init)
+#   docker compose logs minio-init  # xem minio-init đã làm gì
+#   docker compose down -v          # dừng + XÓA volume (mất hết file)
+# =============================================================================
+
+name: mlflow-course-14
+
+services:
+
+  minio:
+    # Docker Hub minio/minio hay báo "access denied" → dùng image trên quay.io
+    image: quay.io/minio/minio:RELEASE.2024-12-18T13-15-44Z
+    container_name: mlflow-course-14-minio
+    # "server /data": lưu mọi bucket/object vào thư mục /data trong container
+    # --console-address ":9001": bật giao diện web ở port 9001 (API mặc định 9000)
+    command: server /data --console-address ":9001"
+    environment:
+      # Tài khoản admin. Với boto3 đây chính là cặp access key / secret key.
+      # Password phải >= 8 ký tự, nếu không MinIO từ chối khởi động.
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio123
+    ports:
+      # 29000/29001 ở host: 9000/9001 thì stack tutorial02-extend đang dùng
+      - "29000:9000" # API     — boto3, mc, (bài 15) MLflow
+      - "29001:9001" # Console — trình duyệt
+    volumes:
+      # Named volume giống bài 13: down giữ file, down -v xóa file
+      - minio_data:/data
+    healthcheck:
+      # MinIO có sẵn endpoint "còn sống không?" — giống /health của MLflow
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Container chạy MỘT LẦN để tạo bucket rồi thoát — không phải service chạy mãi.
+  # Sau khi xong, `docker compose ps -a` sẽ thấy nó "Exited (0)": đó là THÀNH CÔNG.
+  minio-init:
+    # mc = MinIO Client, công cụ dòng lệnh để quản lý MinIO
+    image: quay.io/minio/mc:RELEASE.2024-11-21T17-21-54Z
+    container_name: mlflow-course-14-minio-init
+    depends_on:
+      minio:
+        # Chờ healthcheck của minio báo healthy rồi mới chạy — không cần "sleep 5"
+        condition: service_healthy
+    # Chạy 3 lệnh nối bằng && : lệnh nào lỗi thì dừng và thoát với mã != 0
+    #   mc alias set  : lưu "local" = địa chỉ + key của MinIO
+    #                   (http://minio:9000 — gọi bằng TÊN SERVICE trong network compose)
+    #   mc mb         : make bucket; --ignore-existing → chạy lại không lỗi
+    #   mc ls         : in danh sách bucket để xem trong log
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minio minio123 &&
+      mc mb --ignore-existing local/mlflow &&
+      mc ls local
+      "
+
+volumes:
+  minio_data:

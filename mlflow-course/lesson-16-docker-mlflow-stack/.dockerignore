@@ -1,0 +1,4 @@
+# Build context chỉ cần requirements.txt. Chặn hết phần còn lại — nhất là .env
+# (chứa key) và _tmp/ — để chúng không bị gửi vào Docker lúc build (bài 02).
+*
+!requirements.txt

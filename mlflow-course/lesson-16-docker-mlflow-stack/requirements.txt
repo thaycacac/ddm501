@@ -1,0 +1,10 @@
+# Chỉ những gì MLFLOW SERVER cần — không có scikit-learn/pandas (đó là của script).
+# tutorial02-extend dùng chung 1 requirements.txt cho cả server lẫn script,
+# nên image của nó cài thừa scikit-learn, numpy, pandas...
+mlflow==2.19.0
+# MLflow 2.19 imports FallbackAsyncAdaptedQueuePool, removed in SQLAlchemy 2.1.
+sqlalchemy<2.1
+# Driver để SQLAlchemy nói chuyện với Postgres (bài 13)
+psycopg2-binary==2.9.10
+# Server đọc MinIO khi UI hiện tab Artifacts (bài 15, chế độ DIRECT)
+boto3==1.37.14
