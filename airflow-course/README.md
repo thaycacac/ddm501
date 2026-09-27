@@ -32,16 +32,16 @@ cũ thế nào, log từng bước ở đâu".
 | Bài | Chủ đề | Ánh xạ vào tutorial04 | Status |
 |-----|--------|------------------------|--------|
 | 01 | Airflow standalone trong Docker, UI, DAG hello, cấu hình `AIRFLOW__*` | `Dockerfile`, `docker-compose.yml` | Xong |
-| **02** | Cấu trúc DAG + lịch chạy: `schedule`, `start_date`, `catchup`, logical date / `ds`, `dags test`, pause/unpause | `wdbc_pipeline.py` dòng 38–51 | **Đang học** |
-| 03 | TaskFlow `@task` + XCom: truyền dict, phụ thuộc tự động, `>>` khi truyền qua file, fan-in | dòng 54–69, 160–165 | Chưa tạo |
-| 04 | Idempotency: thư mục theo `ds`, snapshot, parquet, chia bằng hash, `history.jsonl`, `backfill` | `run_dir`, `ingest`, `split`, `report` | Chưa tạo |
-| 05 | Lỗi và retry: `retries` + backoff, `AirflowFailException`, quarantine + ngưỡng, log trong Grid | `validate`, `scripts/corrupt_extract.py` | Chưa tạo |
+| 02 | Cấu trúc DAG + lịch chạy: `schedule`, `start_date`, `catchup`, logical date / `ds`, `dags test`, pause/unpause | `wdbc_pipeline.py` dòng 38–51 | Xong |
+| 03 | TaskFlow `@task` + XCom: truyền dict, phụ thuộc tự động, `>>` khi truyền qua file, fan-in | dòng 54–69, 160–165 | Xong |
+| 04 | Idempotency: thư mục theo `ds`, snapshot, parquet, chia bằng hash, `history.jsonl`, `backfill` | `run_dir`, `ingest`, `split`, `report` | Xong |
+| **05** | Lỗi và retry: `retries` + backoff, `AirflowFailException`, quarantine + ngưỡng, log trong Grid | `validate`, `scripts/corrupt_extract.py` | **Đang học** |
 | Capstone T04 | Chạy stack tutorial04, làm 4 bài tập README, giải thích từng dòng | toàn bộ `../tutorial04/ddm501-t03-airflow` | Chưa tạo |
 | Bonus | DAG train + register vào stack MLflow của `mlflow-course` bài 16 | nối với `../mlflow-course` | Chưa tạo |
 
 ## Bài đang học
 
 ```bash
-cd lesson-02-schedule-catchup
+cd lesson-05-retries-failures
 python READ_WITH_ME.py
 ```

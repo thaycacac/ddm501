@@ -1,11 +1,13 @@
 # Airflow runtime files (tạo ra khi chạy, không commit)
-logs/
-data/staging/
+# "**/" để khớp trong mọi lesson-XX/, không chỉ ngay dưới airflow-course/
+**/logs/
+**/data/staging/
 airflow.db
 airflow-webserver.pid
 webserver_config.py
 standalone_admin_password.txt
 .env
+**/data/raw/*.orig
 
 __pycache__/
 *.pyc
