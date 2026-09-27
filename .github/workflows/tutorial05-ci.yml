@@ -1,0 +1,109 @@
+# CI Pipeline -- tutorial05/github-runner-demo
+# Uses GitHub Self-hosted Runner for automated build and testing
+name: Tutorial05 CI Pipeline with Self-hosted Runner
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'tutorial05/github-runner-demo/**'
+      - '.github/workflows/tutorial05-ci.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'tutorial05/github-runner-demo/**'
+      - '.github/workflows/tutorial05-ci.yml'
+  workflow_dispatch:  # Allow manual run from GitHub UI
+
+defaults:
+  run:
+    working-directory: tutorial05/github-runner-demo
+
+jobs:
+  # JOB 1: Code quality check
+  lint-and-format:
+    name: Code Quality Check
+    runs-on: self-hosted
+    # Public repo + self-hosted runner: never run code from fork PRs on this machine.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      # actions/setup-python installs Python 3.11 on macOS via `sudo installer -pkg`,
+      # which fails on a non-interactive self-hosted runner; use the host python3 in a venv instead.
+      - name: Set up Python (host python3 + venv)
+        run: |
+          python3 -m venv .venv
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+          .venv/bin/python --version
+
+      - name: Install linting tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8
+
+      - name: Run flake8 linter
+        run: |
+          # Check for syntax errors and code style
+          # --max-line-length=120: allows lines up to 120 characters
+          flake8 src/ tests/ --max-line-length=120 --statistics
+
+  # JOB 2: Run Unit Tests
+  run-tests:
+    name: Run Unit Tests
+    runs-on: self-hosted
+    needs: lint-and-format  # Only runs after lint succeeds
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Set up Python (host python3 + venv)
+        run: |
+          python3 -m venv .venv
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+          .venv/bin/python --version
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run tests with coverage report
+        run: |
+          pytest tests/ -v \
+            --cov=src \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()  # Upload even if tests fail
+        with:
+          name: coverage-report
+          path: tutorial05/github-runner-demo/coverage.xml
+
+  # JOB 3: Build Summary
+  build-summary:
+    name: Build Summary
+    runs-on: self-hosted
+    needs: [lint-and-format, run-tests]
+    # Always runs to summarize results (still skipped for fork PRs)
+    if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    steps:
+      - name: Print success message
+        if: needs.run-tests.result == 'success'
+        working-directory: .
+        run: |
+          echo '================================'
+          echo ' CI PIPELINE PASSED!'
+          echo ' Ready to deploy to production.'
+          echo '================================'
+
+      - name: Print failure message
+        if: needs.run-tests.result == 'failure'
+        working-directory: .
+        run: |
+          echo ' CI PIPELINE FAILED!'
+          echo ' Check logs to identify errors.'

@@ -63,3 +63,5 @@ standalone_admin_password.txt
 *.log
 .ipynb_checkpoints/
 _tmp/
+
+tutorial05/actions-runner/
