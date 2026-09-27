@@ -30,12 +30,12 @@ tạo khi bạn học xong bài trước.
 | 16 | Docker hóa MLflow server: 4 service, `depends_on`, healthcheck, network, `.env` | `Dockerfile`, `docker-compose.yml`, `.env.example` | Xong |
 | 17 | Train + log + register có signature / input_example (chạy trên stack bài 16) | `01_training.py`, `utils/data.py` | Xong |
 | 18 | Sửa metadata version + alias `dev`/`staging`/`prod`, promote (dùng model bài 17) | `02_update_models.py`, `03_configuration_alias.py` | Xong |
-| **19** | Load theo alias/version + chia traffic A/B (dùng alias bài 18) | `04_loading_models.py`, `05_model_routing.py` | **Đang học** |
+| 19 | Load theo alias/version + chia traffic A/B (dùng alias bài 18) | `04_loading_models.py`, `05_model_routing.py` | Xong |
 | Capstone extend | Chạy 01→05, giải thích từng dòng, tìm chỗ sai trong code gốc | toàn bộ `../tutorial02-extend` | Chưa tạo |
+| **Capstone T03** | Serve model từ registry bằng FastAPI: lifespan, Pydantic, health degraded, đổi version | `../tutorial03/registry-serving` | **Đang học** |
 
 ## Bài đang học
 
 ```bash
-cd lesson-19-load-routing
-python READ_WITH_ME.py
+cd ../tutorial03/registry-serving
 ```

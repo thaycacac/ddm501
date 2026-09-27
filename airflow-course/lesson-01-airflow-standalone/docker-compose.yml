@@ -1,0 +1,59 @@
+# =============================================================================
+# BÀI 01 — Airflow standalone (= tutorial04/ddm501-t03-airflow/docker-compose.yml)
+# =============================================================================
+#
+#   docker compose up -d --build     # lần đầu: build image airflow-course:2.8.4
+#   docker compose ps                # đợi (healthy), khoảng 1 phút
+#   → http://127.0.0.1:28080  user: admin  password: admin
+#
+# Khác tutorial04: tên project/port, DAG_DIR_LIST_INTERVAL, và user admin/admin
+# tạo sẵn (tutorial04 để standalone sinh mật khẩu ngẫu nhiên).
+# =============================================================================
+
+name: airflow-course-01
+
+services:
+  airflow:
+    build: .
+    # Các bài sau dùng lại đúng image này (không build lại)
+    image: airflow-course:2.8.4
+    container_name: airflow-course-01-airflow
+    # Entrypoint của image là "airflow" → lệnh thật chạy: airflow standalone
+    command: standalone
+    ports:
+      - "28080:8080"
+    environment:
+      # AIRFLOW__<SECTION>__<KEY> ghi đè airflow.cfg
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor        # 1 task một lúc (SQLite chỉ chịu được vậy)
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"              # không nạp ~50 DAG ví dụ
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true" # DAG mới luôn ở trạng thái Paused
+      # 4 dấu "/" = sqlite:/// + đường dẫn tuyệt đối /opt/airflow/airflow.db.
+      # File DB nằm TRONG container (không bind mount) → "down" là mất lịch sử chạy.
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
+      # Mặc định 300s mới quét file DAG MỚI trong dags/. Khóa học hạ xuống 30s
+      # để thêm file DAG là thấy trên UI nhanh. (tutorial04 giữ mặc định.)
+      AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL: "30"
+      # Biến "_AIRFLOW_*" không phải cấu hình Airflow mà là lệnh cho entrypoint
+      # của image: trước khi chạy "standalone", migrate DB rồi tạo user admin/admin.
+      # standalone thấy admin đã tồn tại → không sinh mật khẩu ngẫu nhiên nữa.
+      # Chỉ dùng để học trên máy mình.
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: admin
+    # UID chạy trong container. 50000 = user airflow của image.
+    # Linux: đặt AIRFLOW_UID=$(id -u) trong .env để file ghi ra logs/, data/ thuộc về bạn.
+    user: "${AIRFLOW_UID:-50000}:0"
+    volumes:
+      - ./dags:/opt/airflow/dags   # Airflow đọc DAG ở đây
+      - ./data:/opt/airflow/data   # dữ liệu task đọc/ghi
+      - ./logs:/opt/airflow/logs   # log từng task instance → xem được cả trên máy
+    healthcheck:
+      # Image Airflow có curl (khác python:slim ở mlflow-course dùng urllib)
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      # standalone phải migrate DB + tạo user admin trước → cho 60s ân hạn
+      start_period: 60s
+    restart: unless-stopped

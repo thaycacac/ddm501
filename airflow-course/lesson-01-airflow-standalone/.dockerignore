@@ -1,0 +1,3 @@
+# Dockerfile không COPY gì → không cần gửi file nào cho Docker lúc build.
+# Nếu thiếu file này, "docker compose build" gửi cả logs/ (có thể rất to) lên daemon.
+*

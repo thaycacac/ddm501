@@ -1,0 +1,12 @@
+# Airflow runtime files (tạo ra khi chạy, không commit)
+logs/
+data/staging/
+airflow.db
+airflow-webserver.pid
+webserver_config.py
+standalone_admin_password.txt
+.env
+
+__pycache__/
+*.pyc
+.DS_Store
