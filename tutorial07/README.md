@@ -8,6 +8,7 @@ A production-ready machine learning monitoring system using MLFlow, Prometheus, 
 ## 📋 Table of Contents
 
 - [Overview](#-overview)
+- [Evidence](#-evidence)
 - [Architecture](#-architecture)
 - [Features](#-features)
 - [Prerequisites](#-prerequisites)
@@ -43,6 +44,80 @@ This project demonstrates a complete MLOps pipeline with real-time monitoring fo
 - Detect data drift and model degradation
 - Compare model versions and A/B testing
 - Alert on anomalies and performance issues
+
+---
+
+## 📸 Evidence
+
+Captured on 2026-09-27 against the running stack (`docker compose up -d`).
+
+### 1. Alerts received in Telegram
+
+Messages received by the `mlops_alert_bot` in the **Test MLOps** group while running the tests in
+[Test the whole alert chain](#test-the-whole-alert-chain).
+
+![Telegram alerts – test message, health check, retrain, Airflow failure](screenshots/telegram-alerts-01.jpg)
+
+![Telegram alerts – APIDown resolved, drift detected, retrain triggered by drift](screenshots/telegram-alerts-02.jpg)
+
+| Message | Source | How it was triggered |
+|---------|--------|----------------------|
+| `✅ MLOps tutorial07: test Telegram alert` | `scripts/test_telegram.sh` | Direct Bot API test |
+| `[HEALTH CHECK] 2/3 service down` | Airflow `service_health_check` | API and MLflow were not reachable from Airflow |
+| `[FIRING:1] / [RESOLVED] EvidentlyServiceRestarted` | Prometheus → Alertmanager | Evidently container restarted (`send_resolved: true` sends the resolved message) |
+| `[RETRAIN] Model promoted to Production` | Airflow `model_retrain` | Manual trigger, and later triggered by `drift_monitoring` (version, metrics, MLflow run link) |
+| `[AIRFLOW] Task failed` (`quality_gate`) | Airflow `on_failure_callback` | `model_retrain` with `{"min_accuracy": 1.01}` – quality gate cannot pass |
+| `[RESOLVED] CRITICAL · api – APIDown` | Prometheus → Alertmanager | `docker compose stop api` for > 2 minutes, then `docker compose start api` |
+| `[DRIFT] Data drift detected` | Airflow `drift_monitoring` | Evidently `POST /analyze` reported drift → triggers `model_retrain` |
+| `[FIRING:1] WARNING · evidently – DataDriftDetected` | Prometheus → Alertmanager | Evidently drift metric exposed to Prometheus |
+
+### 2. Prometheus → Alertmanager
+
+With the API stopped for more than 2 minutes, `APIDown` (critical/api) is firing in Prometheus
+(`DataDriftDetected` is firing from the drift test):
+
+![Prometheus firing alerts](screenshots/prometheus_alerts_firing.png)
+
+Alertmanager groups the alerts by `component` / `severity` and routes them to the `telegram` receiver:
+
+![Alertmanager alerts routed to Telegram](screenshots/alertmanager_apidown_firing.png)
+
+### 3. Airflow
+
+**Login** – `http://localhost:8080`, admin user created by `airflow-init`:
+
+![Airflow login](screenshots/airflow_login.png)
+
+**DAG list** – the 3 DAGs are loaded, unpaused, no import errors; `drift_monitoring` (`@hourly`) and
+`service_health_check` (`*/15 * * * *`) run on schedule:
+
+![Airflow DAG list](screenshots/airflow_dags_list.png)
+
+**`service_health_check`** – scheduled runs every 15 minutes (red runs = API/MLflow were down at that time and a
+Telegram alert was sent; green = all 3 services healthy):
+
+![service_health_check runs](screenshots/airflow_service_health_check_grid.png)
+
+**`drift_monitoring`** – drift detected → `alert_drift` (Telegram) → `trigger_model_retrain`; the `no_drift`
+branch is skipped:
+
+![drift_monitoring graph](screenshots/airflow_drift_monitoring_graph.png)
+
+**`model_retrain`** – run history (successful retrains and intentionally failed runs):
+
+![model_retrain runs](screenshots/airflow_model_retrain_grid.png)
+
+**Intentional failure** – `min_accuracy=1.01`: `quality_gate` fails, downstream tasks are `upstream_failed`,
+`on_failure_callback` sends the `[AIRFLOW] Task failed` Telegram message within ~1 second:
+
+![model_retrain failed run](screenshots/airflow_model_retrain_failed_run.png)
+
+### 4. MLflow Model Registry
+
+Every retrain registers a new `wine_quality_model` version; the latest one is promoted to `Production` and loaded
+by the API through `POST /model/reload`:
+
+![MLflow model registry](screenshots/mlflow_model_registry.png)
 
 ---
 
@@ -588,6 +663,8 @@ docker compose exec airflow-scheduler airflow dags trigger drift_monitoring -c '
 docker compose exec airflow-scheduler airflow dags trigger model_retrain -c '{"min_accuracy": 1.01, "reason": "failure alert test"}'
 ```
 
+Screenshots of the Airflow UI and MLflow registry: see [Evidence](#-evidence).
+
 ---
 
 ## Telegram Alerting
@@ -654,6 +731,8 @@ docker compose start api
 open http://localhost:9090/alerts
 open http://localhost:9093
 ```
+
+Screenshots of the alerts in Prometheus, Alertmanager and Telegram: see [Evidence](#-evidence).
 
 ---
 
@@ -920,6 +999,7 @@ ml-monitoring/
 │   ├── training.py               # Model training script (also used by model_retrain DAG)
 │   ├── test_telegram.sh          # Telegram test + Alertmanager token sync
 │   └── requirements.txt
+├── screenshots/                  # Evidence (Telegram, Prometheus, Alertmanager, Airflow, MLflow)
 ├── secrets/                      # Local only (gitignored): telegram_bot_token
 ├── docker-compose.yml            # Main orchestration file
 ├── .env.example                  # Environment template
