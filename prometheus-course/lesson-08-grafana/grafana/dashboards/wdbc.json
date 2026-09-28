@@ -1,0 +1,142 @@
+{
+  "uid": "course-wdbc",
+  "title": "WDBC API — Prometheus Course",
+  "tags": ["prometheus-course", "wdbc"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Predictions per second, by outcome",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "course-prom" },
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "reqps", "custom": { "lineWidth": 2, "fillOpacity": 8 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (outcome) (rate(wdbc_predictions_total[1m]))",
+          "legendFormat": "{{outcome}}",
+          "datasource": { "type": "prometheus", "uid": "course-prom" }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Error share",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "course-prom" },
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "custom": { "lineWidth": 2, "fillOpacity": 8 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(wdbc_errors_total[1m])) / (sum(rate(wdbc_errors_total[1m])) + sum(rate(wdbc_predictions_total[1m])))",
+          "legendFormat": "errors",
+          "datasource": { "type": "prometheus", "uid": "course-prom" }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Latency p50 / p95 / p99",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "course-prom" },
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "custom": { "lineWidth": 2, "fillOpacity": 8 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "p50",
+          "expr": "histogram_quantile(0.5, sum(rate(wdbc_prediction_latency_seconds_bucket[1m])) by (le))",
+          "legendFormat": "p50",
+          "datasource": { "type": "prometheus", "uid": "course-prom" }
+        },
+        {
+          "refId": "p95",
+          "expr": "histogram_quantile(0.95, sum(rate(wdbc_prediction_latency_seconds_bucket[1m])) by (le))",
+          "legendFormat": "p95",
+          "datasource": { "type": "prometheus", "uid": "course-prom" }
+        },
+        {
+          "refId": "p99",
+          "expr": "histogram_quantile(0.99, sum(rate(wdbc_prediction_latency_seconds_bucket[1m])) by (le))",
+          "legendFormat": "p99",
+          "datasource": { "type": "prometheus", "uid": "course-prom" }
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Share of predictions that are malignant",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "course-prom" },
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "custom": { "lineWidth": 2, "fillOpacity": 8 } },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "wdbc_malignant_share",
+          "legendFormat": "malignant share",
+          "datasource": { "type": "prometheus", "uid": "course-prom" }
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Model version serving",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "course-prom" },
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 4 },
+      "options": { "textMode": "name", "colorMode": "none", "graphMode": "none" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "wdbc_model_info",
+          "legendFormat": "v{{version}} (sklearn {{sklearn_version}})",
+          "instant": true,
+          "datasource": { "type": "prometheus", "uid": "course-prom" }
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Alerts firing",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "course-prom" },
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 4 },
+      "options": { "textMode": "value_and_name", "colorMode": "background", "graphMode": "none" },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "none",
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null } ] }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "ALERTS{alertstate=\"firing\"}",
+          "legendFormat": "{{alertname}}",
+          "instant": true,
+          "datasource": { "type": "prometheus", "uid": "course-prom" }
+        }
+      ]
+    }
+  ]
+}

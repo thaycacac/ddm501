@@ -1,0 +1,16 @@
+# Provisioning datasource: Grafana khởi động là đã có nguồn dữ liệu, không cần click.
+# (= tutorial06/monitoring/grafana/provisioning/datasources/prometheus.yml)
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+    # uid CỐ ĐỊNH: dashboard JSON tham chiếu datasource bằng uid này. Sai uid → panel
+    # trống trơn mà không có lỗi nào đáng đọc.
+    uid: course-prom
+    # proxy: trình duyệt hỏi Grafana, GRAFANA (server) gọi Prometheus. Vì vậy url là tên
+    # service trong mạng compose, không phải 127.0.0.1:29090 của máy bạn.
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    # Không cho sửa trên UI: cấu hình nằm trong git, không trôi theo cú click.
+    editable: false

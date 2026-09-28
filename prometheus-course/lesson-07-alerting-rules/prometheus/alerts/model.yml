@@ -1,0 +1,82 @@
+# Năm alert của tutorial06 (monitoring/prometheus/alerts/model.yml).
+#
+# Để học nhanh, cửa sổ rate và `for:` được RÚT NGẮN; giá trị gốc của tutorial06
+# ghi ở comment "t06:" từng alert. Logic giống hệt.
+#
+# Cách Prometheus xử lý một alert, mỗi evaluation_interval (5s):
+#   expr trả về RỖNG        → inactive (xanh)
+#   expr trả về series      → pending (vàng) — bắt đầu đếm thời gian
+#   vẫn trả về sau `for:`   → firing (đỏ) — lúc này mới gửi cho Alertmanager (Bonus)
+#   expr rỗng trở lại       → về inactive, bộ đếm `for:` reset
+# Không có `for:` → một lần scrape vượt ngưỡng là firing ngay → báo động giả.
+
+groups:
+  # Một group = một nhóm rule được đánh giá cùng nhau, theo thứ tự.
+  - name: wdbc-api
+    rules:
+
+      # Câu hỏi: "API còn trả lời scrape không?"
+      # up do Prometheus tự sinh (bài 04). Service chết không tự báo được — ta bắt SỰ VẮNG MẶT.
+      - alert: ApiDown
+        expr: up{job="wdbc-api"} == 0
+        for: 30s                                   # t06: 1m
+        # labels: gắn thêm vào alert. severity dùng để định tuyến (critical → gọi điện, warning → chat).
+        labels: {severity: critical}
+        # annotations: chữ cho người đọc. Template Go: {{ $labels.<tên> }}, {{ $value }}.
+        annotations:
+          summary: "The prediction API is not answering scrapes"
+          description: "Prometheus has failed to scrape {{ $labels.instance }} for 30 seconds."
+
+      # Câu hỏi: "process còn sống, nhưng có phục vụ được không?"
+      # Port check sẽ gọi là khỏe; gauge này thì không (bài 03).
+      - alert: ModelNotLoaded
+        expr: wdbc_model_loaded == 0
+        for: 30s                                   # t06: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "API is up but has no model"
+          description: >-
+            The process is answering, so a port check would call it healthy.
+            Every prediction is returning 503.
+
+      # Câu hỏi: "bao nhiêu % request đang thất bại?" — TỈ LỆ, không phải số đếm (bài 05).
+      - alert: HighErrorRate
+        expr: >-
+          sum(rate(wdbc_errors_total[1m]))
+          /
+          (sum(rate(wdbc_errors_total[1m])) + sum(rate(wdbc_predictions_total[1m])))
+          > 0.05
+        for: 1m                                    # t06: [5m] và for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "More than 5% of requests are failing"
+          # humanizePercentage: 0.2 → "20%".
+          description: "Current error share: {{ $value | humanizePercentage }}."
+
+      # Câu hỏi: "những người chậm nhất có đang khổ không?" — p95, không phải trung bình (bài 06).
+      - alert: SlowPredictions
+        expr: >-
+          histogram_quantile(
+            0.95,
+            sum(rate(wdbc_prediction_latency_seconds_bucket[1m])) by (le)
+          ) > 0.05
+        for: 1m                                    # t06: [5m] và for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "95th percentile prediction latency above 50 ms"
+          # humanizeDuration: 0.21 → "210ms".
+          description: "p95 is {{ $value | humanizeDuration }}, normally a few ms."
+
+      # Câu hỏi: "model còn trả lời giống lúc deploy không?"
+      # Không phải lỗi kỹ thuật: service khỏe, latency ổn, câu trả lời đổi. Chỉ service ML có (bài 09).
+      # 0.37 = tỉ lệ ác tính lúc train (train_malignant_share trong model_card.json).
+      - alert: MalignantShareShift
+        expr: abs(wdbc_malignant_share - 0.37) > 0.15
+        for: 2m                                    # t06: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "Share of malignant predictions has moved a long way"
+          # $value là kết quả expr = KHOẢNG CÁCH tới baseline, không phải tỉ lệ.
+          description: >-
+            {{ $value | humanizePercentage }} away from a baseline of 37%.
+            Either the population changed or the inputs did.

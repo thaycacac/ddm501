@@ -1,0 +1,81 @@
+# =============================================================================
+# BÀI 08 — bài 07 + Grafana (= tutorial06/docker-compose.yml đầy đủ).
+# Tắt stack bài 07 trước (cùng port).
+# =============================================================================
+#
+#   docker compose up -d --build
+#   API         http://127.0.0.1:28000/docs
+#   Prometheus  http://127.0.0.1:29090
+#   Grafana     http://127.0.0.1:23000     (xem ẩn danh; sửa: admin / admin)
+# =============================================================================
+
+name: prometheus-course-08
+
+services:
+  api:
+    build:
+      context: ../lesson-03-instrument-fastapi
+      dockerfile: ../lesson-04-prometheus-server/Dockerfile
+    container_name: prometheus-course-08-api
+    ports:
+      - "28000:8000"
+    environment:
+      SLOW_MS: "${SLOW_MS:-0}"
+      # Bài 10: T04_TRAP=1 docker compose up -d --build → bật bẫy cardinality.
+      T04_TRAP: "${T04_TRAP:-0}"
+    networks: [monitoring]
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: prometheus-course-08-prometheus
+    ports:
+      - "29090:9090"
+    volumes:
+      # Dùng lại cấu hình + 5 alert của bài 07.
+      - ../lesson-07-alerting-rules/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../lesson-07-alerting-rules/prometheus/alerts:/etc/prometheus/alerts:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=2d"
+      - "--web.enable-lifecycle"
+    networks: [monitoring]
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: prometheus-course-08-grafana
+    ports:
+      - "23000:3000"
+    volumes:
+      # Grafana đọc mọi file trong /etc/grafana/provisioning lúc khởi động:
+      #   datasources/*.yml → tạo nguồn dữ liệu, dashboards/*.yml → nơi tìm file dashboard.
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      # Thư mục chứa file dashboard JSON (dashboards.yml trỏ tới đường dẫn này).
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      # Dữ liệu nội bộ của Grafana (user, dashboard sửa trên UI...).
+      - grafana_data:/var/lib/grafana
+    environment:
+      # Mọi cấu hình Grafana đặt được bằng biến GF_<SECTION>_<KEY> (grafana.ini).
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      # Cho xem không cần đăng nhập, quyền chỉ đọc — tiện cho bài học, KHÔNG làm ở production.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    networks: [monitoring]
+    depends_on: [prometheus]
+    restart: unless-stopped
+
+networks:
+  monitoring:
+    driver: bridge
+
+volumes:
+  prometheus_data:
+  grafana_data:

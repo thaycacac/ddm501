@@ -1,0 +1,36 @@
+# Bài 06 — chạy ở http://127.0.0.1:29090/graph, khung Graph 15m.
+# Cần traffic đều đặn đang chạy (traffic.py --rps 20 --seconds 900).
+
+# ---------------------------------------------------------------- 1. BUCKET THÔ
+# 11 series (10 bucket + Inf), mỗi series một counter cộng dồn. Tab Table: le càng lớn số càng lớn.
+wdbc_prediction_latency_seconds_bucket
+
+# Rate từng bucket: mỗi giây có bao nhiêu request <= le (trong 5 phút qua).
+rate(wdbc_prediction_latency_seconds_bucket[5m])
+
+# ---------------------------------------------------------------- 2. PERCENTILE
+# Công thức chuẩn. Bình thường p95 vài mili giây (≈ 0.002–0.005, tùy máy).
+histogram_quantile(0.95, sum by (le) (rate(wdbc_prediction_latency_seconds_bucket[5m])))
+
+# SAI: sum() không giữ le → histogram_quantile không biết mép bucket → rỗng.
+histogram_quantile(0.95, sum(rate(wdbc_prediction_latency_seconds_bucket[5m])))
+
+# PANEL 3 của tutorial06: ba câu p50 / p95 / p99 với cửa sổ [1m].
+# Bấm "Add Panel" để đặt ba câu cạnh nhau, hoặc chạy lần lượt.
+histogram_quantile(0.5,  sum by (le) (rate(wdbc_prediction_latency_seconds_bucket[1m])))
+histogram_quantile(0.95, sum by (le) (rate(wdbc_prediction_latency_seconds_bucket[1m])))
+histogram_quantile(0.99, sum by (le) (rate(wdbc_prediction_latency_seconds_bucket[1m])))
+
+# ---------------------------------------------------------------- 3. TRUNG BÌNH
+# _sum / _count, cả hai đều rate trước.
+rate(wdbc_prediction_latency_seconds_sum[1m]) / rate(wdbc_prediction_latency_seconds_count[1m])
+
+# ---------------------------------------------------------------- 4. % REQUEST ĐỦ NHANH (SLO)
+# Tỉ lệ request xong trong 5 ms. 0.005 là mép bucket → chính xác, không nội suy.
+sum(rate(wdbc_prediction_latency_seconds_bucket{le="0.005"}[5m]))
+/
+sum(rate(wdbc_prediction_latency_seconds_count[5m]))
+
+# ---------------------------------------------------------------- 5. ALERT SlowPredictions
+# Đúng expr của tutorial06: có kết quả = p95 5 phút qua vượt 50 ms.
+histogram_quantile(0.95, sum by (le) (rate(wdbc_prediction_latency_seconds_bucket[5m]))) > 0.05

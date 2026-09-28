@@ -1,0 +1,60 @@
+# Bài 05 — chạy lần lượt từng câu ở http://127.0.0.1:29090/graph (hoặc bằng scripts/promql.py).
+# Dòng bắt đầu bằng # là comment (PromQL cũng hiểu # là comment).
+# Trước khi chạy: để traffic.py --broken 0.2 chạy ít nhất 2–3 phút để có lỗi và có lịch sử.
+
+# ---------------------------------------------------------------- 1. INSTANT vs RANGE
+# Instant vector: 2 series (benign, malignant), mỗi series một số. Tab Graph: 2 đường đi lên mãi.
+wdbc_predictions_total
+
+# Range vector: mỗi series ~12 điểm (1 phút / scrape 5s). Chỉ xem được ở tab Table.
+# Tab Graph báo lỗi — range vector không vẽ được, nó là nguyên liệu cho hàm.
+wdbc_predictions_total[1m]
+
+# ---------------------------------------------------------------- 2. SELECTOR
+wdbc_predictions_total{outcome="malignant"}
+wdbc_errors_total{reason="missing_features"}
+up{job=~"wdbc.*"}
+
+# ---------------------------------------------------------------- 3. RATE
+# Dự đoán mỗi giây, trung bình 1 phút qua, theo từng outcome.
+# Tab Graph: đường nằm ngang (~20/giây tổng) khi traffic đều — thứ Counter thô không cho thấy.
+rate(wdbc_predictions_total[1m])
+
+# Tăng bao nhiêu trong 5 phút (= rate * 300).
+increase(wdbc_predictions_total[5m])
+
+# ---------------------------------------------------------------- 4. AGGREGATION
+# Tổng mọi outcome → 1 series.
+sum(rate(wdbc_predictions_total[1m]))
+
+# Giữ label outcome, bỏ job/instance/service/env → PANEL 1 của tutorial06.
+sum by (outcome) (rate(wdbc_predictions_total[1m]))
+
+# ---------------------------------------------------------------- 5. PHÉP TOÁN GIỮA VECTOR
+# SAI: hai bên có label khác nhau (reason vs outcome) → không cặp nào khớp → rỗng.
+rate(wdbc_errors_total[1m]) / rate(wdbc_predictions_total[1m])
+
+# ĐÚNG: sum() bỏ hết label rồi mới chia → tỉ lệ lỗi 1 phút qua → PANEL 2 của tutorial06.
+# Với --broken 0.2: ≈ 0.2.
+sum(rate(wdbc_errors_total[1m]))
+/
+(sum(rate(wdbc_errors_total[1m])) + sum(rate(wdbc_predictions_total[1m])))
+
+# ---------------------------------------------------------------- 6. SO SÁNH = LỌC
+# Cùng tỉ lệ lỗi, cửa sổ 5 phút, lọc > 5% → đúng expr của alert HighErrorRate.
+# Có kết quả = "alert đang đúng điều kiện". Tắt traffic hỏng, chờ 5 phút → rỗng.
+sum(rate(wdbc_errors_total[5m]))
+/
+(sum(rate(wdbc_errors_total[5m])) + sum(rate(wdbc_predictions_total[5m])))
+> 0.05
+
+# ---------------------------------------------------------------- 7. GAUGE
+# Gauge đọc thẳng; muốn mượt thì *_over_time. KHÔNG rate() một gauge.
+wdbc_malignant_share
+avg_over_time(wdbc_malignant_share[5m])
+
+# ---------------------------------------------------------------- 8. OFFSET
+# Tốc độ hiện tại so với 5 phút trước. Tỉ số > 1 → đang bận hơn.
+sum(rate(wdbc_predictions_total[1m]))
+/
+sum(rate(wdbc_predictions_total[1m] offset 5m))

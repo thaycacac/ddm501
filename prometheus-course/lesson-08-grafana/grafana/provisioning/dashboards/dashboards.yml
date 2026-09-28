@@ -1,0 +1,17 @@
+# Provisioning dashboard: bảo Grafana tìm file dashboard JSON ở đâu.
+# (= tutorial06/monitoring/grafana/provisioning/dashboards/dashboards.yml)
+apiVersion: 1
+providers:
+  - name: course
+    orgId: 1
+    # Thư mục hiển thị trong UI (Dashboards → Prometheus Course).
+    folder: Prometheus Course
+    type: file
+    disableDeletion: false
+    # Mỗi 10 giây quét lại thư mục: sửa JSON trên máy → Grafana tự cập nhật, không restart.
+    updateIntervalSeconds: 10
+    # Cho sửa trên UI để thử nghiệm; muốn giữ thay đổi thì export JSON đè lại file.
+    allowUiUpdates: true
+    options:
+      # Đường dẫn TRONG container (xem volume trong docker-compose.yml).
+      path: /var/lib/grafana/dashboards

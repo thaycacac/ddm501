@@ -1,0 +1,19 @@
+# Bài 10 — đo cardinality ngay trong Prometheus. Chạy ở http://127.0.0.1:29090/graph.
+# Xem thêm trang Status → TSDB Status (http://127.0.0.1:29090/tsdb-status):
+# bảng "Top 10 series count by metric names" — nơi đầu tiên cần xem khi Prometheus ngốn RAM.
+
+# Số series của wdbc_predictions_total. Bình thường: 2. Bật bẫy: hàng trăm.
+count(wdbc_predictions_total)
+
+# Số series theo từng tên metric của service.
+count by (__name__) ({__name__=~"wdbc_.*"})
+
+# Label nào gây nổ? Đếm số giá trị khác nhau của sample_id.
+count(count by (sample_id) (wdbc_predictions_total))
+
+# Tổng số series đang nằm trong bộ nhớ (head block) của Prometheus — mọi job cộng lại.
+prometheus_tsdb_head_series
+
+# Bẫy còn làm hỏng PromQL: muốn biết "dự đoán/giây theo outcome" vẫn phải sum bỏ sample_id,
+# nhưng Prometheus phải đọc hàng trăm series cho một câu trả lời 2 dòng.
+sum by (outcome) (rate(wdbc_predictions_total[1m]))

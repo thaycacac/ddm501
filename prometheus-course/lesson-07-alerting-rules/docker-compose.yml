@@ -1,0 +1,51 @@
+# =============================================================================
+# BÀI 07 — như bài 04 + rule_files (alert). Tắt stack bài 04 trước (cùng port).
+# =============================================================================
+#
+#   docker compose up -d --build
+#   API         http://127.0.0.1:28000/docs
+#   Prometheus  http://127.0.0.1:29090/alerts
+# =============================================================================
+
+name: prometheus-course-07
+
+services:
+  api:
+    build:
+      context: ../lesson-03-instrument-fastapi
+      dockerfile: ../lesson-04-prometheus-server/Dockerfile
+    container_name: prometheus-course-07-api
+    ports:
+      - "28000:8000"
+    environment:
+      SLOW_MS: "${SLOW_MS:-0}"
+    networks: [monitoring]
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: prometheus-course-07-prometheus
+    ports:
+      - "29090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # Thư mục rule mount riêng: sửa file alert trên máy → POST /-/reload là có hiệu lực.
+      - ./prometheus/alerts:/etc/prometheus/alerts:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=2d"
+      - "--web.enable-lifecycle"
+    networks: [monitoring]
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  monitoring:
+    driver: bridge
+
+volumes:
+  prometheus_data:

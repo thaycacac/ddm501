@@ -1,0 +1,22 @@
+# Như bài 04, thêm rule_files (= tutorial06/monitoring/prometheus/prometheus.yml).
+
+global:
+  scrape_interval: 5s
+  # Mỗi 5 giây Prometheus chạy lại MỌI biểu thức alert một lần.
+  evaluation_interval: 5s
+
+# Nạp mọi file .yml trong thư mục alerts (đường dẫn TRONG container, xem volume ở compose).
+rule_files:
+  - /etc/prometheus/alerts/*.yml
+
+scrape_configs:
+  - job_name: wdbc-api
+    static_configs:
+      - targets: ["api:8000"]
+        labels:
+          service: wdbc-api
+          env: course
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

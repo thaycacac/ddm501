@@ -1,0 +1,57 @@
+# =============================================================================
+# BÀI 04 — service bài 03 + Prometheus server (= tutorial06/docker-compose.yml, chưa có Grafana)
+# =============================================================================
+#
+#   docker compose up -d --build
+#   API         http://127.0.0.1:28000/docs
+#   Prometheus  http://127.0.0.1:29090
+# =============================================================================
+
+name: prometheus-course-04
+
+services:
+  api:
+    build:
+      # Dùng lại nguyên code bài 03: bài này chỉ THÊM Prometheus xung quanh.
+      context: ../lesson-03-instrument-fastapi
+      dockerfile: ../lesson-04-prometheus-server/Dockerfile
+    container_name: prometheus-course-04-api
+    ports:
+      - "28000:8000"        # host:container. Từ máy bạn: 28000. Trong mạng compose: api:8000
+    environment:
+      # Bài 06–07: SLOW_MS=200 docker compose up -d → giả lập model chậm. Mặc định 0.
+      SLOW_MS: "${SLOW_MS:-0}"
+    networks: [monitoring]
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: prometheus-course-04-prometheus
+    ports:
+      - "29090:9090"
+    volumes:
+      # Cấu hình mount chỉ-đọc (:ro) từ máy vào container: sửa file trên máy rồi reload.
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # Dữ liệu time series (TSDB) nằm trong named volume → không mất khi recreate container.
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      # Giữ dữ liệu 2 ngày rồi xóa. Prometheus là kho NGẮN HẠN, không phải kho lưu trữ lâu dài.
+      - "--storage.tsdb.retention.time=2d"
+      # Mở endpoint POST /-/reload: đọc lại cấu hình mà không restart (không mất dữ liệu đang xem).
+      - "--web.enable-lifecycle"
+    networks: [monitoring]
+    depends_on:
+      api:
+        # Chờ HEALTHCHECK của api báo healthy (model đã load) rồi mới bật Prometheus
+        # → lần đầu mở trang Targets đã thấy UP.
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  monitoring:
+    driver: bridge
+
+volumes:
+  prometheus_data:

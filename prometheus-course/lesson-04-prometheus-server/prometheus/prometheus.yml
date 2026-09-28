@@ -1,0 +1,29 @@
+# Cấu hình Prometheus (= tutorial06/monitoring/prometheus/prometheus.yml, chưa có rule_files — bài 07).
+#
+# Prometheus KHÔNG nhận metric. Nó đi lấy, theo lịch, từ mọi target liệt kê ở đây.
+
+global:
+  # Mỗi 5 giây GET /metrics một lần. Ngắn vì đây là bài thực hành; hệ thống thật
+  # thường 15–60s. Mỗi lần scrape = một điểm dữ liệu cho MỖI time series.
+  scrape_interval: 5s
+  # Bao lâu đánh giá rule (alert) một lần — chưa dùng, bài 07.
+  evaluation_interval: 5s
+
+scrape_configs:
+  # job_name trở thành label `job` gắn vào MỌI series lấy từ đây: up{job="wdbc-api"}.
+  - job_name: wdbc-api
+    metrics_path: /metrics          # mặc định đã là /metrics, ghi ra cho rõ
+    static_configs:
+      # `api` là TÊN SERVICE trong docker-compose. Trong mạng compose, Docker DNS phân giải
+      # nó thành IP container api. Port 8000 là port TRONG container, không phải 28000.
+      # Ghi "localhost:8000" → Prometheus tìm trong CHÍNH container của nó → DOWN.
+      - targets: ["api:8000"]
+        # Label tĩnh thêm vào mọi series của target này (cùng với job và instance tự sinh).
+        labels:
+          service: wdbc-api
+          env: course
+
+  # Prometheus tự scrape chính nó (port 9090 trong container của nó).
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
