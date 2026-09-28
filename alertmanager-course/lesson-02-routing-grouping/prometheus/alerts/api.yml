@@ -1,0 +1,29 @@
+# Như bài 01, thêm label `component` — tutorial07 gắn label này cho mọi alert
+# (api, model, evidently, mlflow, airflow) để route và group_by dùng tới.
+
+groups:
+  - name: wdbc-api
+    rules:
+      - alert: ApiDown
+        expr: up{job="wdbc-api"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "The prediction API is not answering scrapes"
+          description: "Prometheus has failed to scrape {{ $labels.instance }} for 30 seconds."
+
+      - alert: HighErrorRate
+        expr: >-
+          sum(rate(wdbc_errors_total[1m]))
+          /
+          (sum(rate(wdbc_errors_total[1m])) + sum(rate(wdbc_predictions_total[1m])))
+          > 0.05
+        for: 1m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "More than 5% of requests are failing"
+          description: "Current error share: {{ $value | humanizePercentage }}."

@@ -1,0 +1,39 @@
+# Bài 05 — như bài 04, thêm template tin nhắn riêng.
+# (tutorial07: config/alertmanager/alertmanager.yml dòng 10–11 và 41)
+# Vẫn là TEMPLATE: __TELEGRAM_CHAT_ID__ được sed thay lúc khởi động (bài 04).
+
+# Nạp mọi file .tmpl trong thư mục (đường dẫn TRONG container). Các {{ define "..." }} trong đó
+# gọi được từ bất kỳ receiver nào.
+templates:
+  - /etc/alertmanager/templates/*.tmpl
+
+route:
+  receiver: telegram
+  group_by: [severity, component]
+  group_wait: 10s
+  group_interval: 30s
+  repeat_interval: 3m
+  routes:
+    - receiver: telegram
+      matchers:
+        - severity="critical"
+      repeat_interval: 1m
+
+inhibit_rules:
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
+    equal: [component]
+
+receivers:
+  - name: telegram
+    telegram_configs:
+      - bot_token_file: /etc/alertmanager/secrets/telegram_bot_token
+        chat_id: __TELEGRAM_CHAT_ID__
+        send_resolved: true
+        parse_mode: HTML
+        # Thay template mặc định bằng template riêng. Dấu nháy đơn bao ngoài vì trong có nháy kép.
+        message: '{{ template "telegram.course.message" . }}'
+    webhook_configs:
+      - url: http://webhook-echo:5001/telegram-copy

@@ -1,0 +1,44 @@
+# Bài 03 — inhibition (chặn tự động theo alert khác) và silence (tắt tay theo label).
+# (tutorial07: config/alertmanager/alertmanager.yml dòng 25–31)
+
+route:
+  receiver: team-chat
+  group_by: [severity, component]
+  group_wait: 10s
+  group_interval: 30s
+  repeat_interval: 3m
+  routes:
+    - receiver: oncall
+      matchers:
+        - severity="critical"
+
+# Inhibition: KHI có alert khớp source_matchers đang FIRING, thì mọi alert khớp target_matchers
+# bị chặn (không gửi) — với điều kiện hai alert có CÙNG giá trị ở các label trong `equal`.
+# Chặn tự động, hết khi alert nguồn hết. Alert bị chặn vẫn nằm trong Alertmanager
+# (state=suppressed), chỉ không được gửi đi.
+inhibit_rules:
+  # Rule A — chép nguyên tutorial07: critical chặn warning.
+  # equal có alertname → chỉ chặn warning CÙNG TÊN với critical (cùng một alert có hai mức).
+  # Tutorial07 đặt tên khác nhau cho hai mức (HighMissingValues / CriticalMissingValues,
+  # SlowDriftAnalysis / VerySlowDriftAnalysis...) → rule này gần như không bao giờ chặn được gì.
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
+    equal: [alertname, component]
+
+  # Rule B — kiểu hay dùng thật: API chết thì mọi warning của api (lỗi, chậm...) là HỆ QUẢ,
+  # gửi thêm chỉ gây nhiễu. equal [component]: chỉ chặn warning của CÙNG component với ApiDown.
+  - source_matchers:
+      - alertname="ApiDown"
+    target_matchers:
+      - severity="warning"
+    equal: [component]
+
+receivers:
+  - name: team-chat
+    webhook_configs:
+      - url: http://webhook-echo:5001/team-chat
+  - name: oncall
+    webhook_configs:
+      - url: http://webhook-echo:5001/oncall

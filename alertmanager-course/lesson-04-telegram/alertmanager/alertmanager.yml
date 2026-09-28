@@ -1,0 +1,45 @@
+# Bài 04 — receiver Telegram thật.
+# (tutorial07: config/alertmanager/alertmanager.yml dòng 33–41)
+#
+# File này là TEMPLATE: __TELEGRAM_CHAT_ID__ được thay bằng giá trị thật lúc container khởi động
+# (xem command của service alertmanager trong docker-compose.yml). Lý do: Alertmanager KHÔNG tự
+# thay biến môi trường kiểu ${VAR} trong file config.
+
+route:
+  receiver: telegram
+  group_by: [severity, component]
+  group_wait: 10s
+  group_interval: 30s
+  repeat_interval: 3m
+  routes:
+    # Như tutorial07: cùng receiver, route con chỉ để critical nhắc lại dày hơn.
+    - receiver: telegram
+      matchers:
+        - severity="critical"
+      repeat_interval: 1m
+
+inhibit_rules:
+  # Bản đã sửa của rule tutorial07 (bài 03): bỏ alertname khỏi equal
+  # → critical chặn MỌI warning cùng component.
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
+    equal: [component]
+
+receivers:
+  # MỘT receiver có thể có NHIỀU tích hợp: tin đi Telegram VÀ webhook-echo cùng lúc.
+  # Nhờ vậy so được payload thô (log webhook) với tin Telegram mà nó sinh ra.
+  - name: telegram
+    telegram_configs:
+      # Token đọc từ file được mount (không nằm trong config, không nằm trong git).
+      # Cách khác là `bot_token: "..."` ghi thẳng — tiện nhưng lộ token khi commit config.
+      - bot_token_file: /etc/alertmanager/secrets/telegram_bot_token
+        chat_id: __TELEGRAM_CHAT_ID__
+        # Telegram mặc định send_resolved: true; ghi rõ cho dễ đọc.
+        send_resolved: true
+        # Chưa khai báo `message:` → dùng template mặc định của Alertmanager
+        # (telegram.default.message). Bài 05 viết template riêng như tutorial07.
+        parse_mode: HTML
+    webhook_configs:
+      - url: http://webhook-echo:5001/telegram-copy

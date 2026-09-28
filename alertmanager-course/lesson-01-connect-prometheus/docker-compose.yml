@@ -1,0 +1,83 @@
+# =============================================================================
+# BÀI 01 — API + Prometheus + Alertmanager + webhook-echo.
+# Tắt stack prometheus-course trước (cùng port 28000 / 29090).
+# =============================================================================
+#
+#   docker compose up -d --build
+#   Prometheus    http://127.0.0.1:29090/alerts
+#   Alertmanager  http://127.0.0.1:29093
+#   webhook-echo  docker compose logs -f webhook-echo
+# =============================================================================
+
+name: alertmanager-course-01
+
+services:
+  api:
+    build:
+      context: ../../prometheus-course/lesson-03-instrument-fastapi
+      dockerfile: ../lesson-04-prometheus-server/Dockerfile
+    container_name: alertmanager-course-01-api
+    ports:
+      - "28000:8000"
+    networks: [monitoring]
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: alertmanager-course-01-prometheus
+    ports:
+      - "29090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/alerts:/etc/prometheus/alerts:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=2d"
+      - "--web.enable-lifecycle"
+    networks: [monitoring]
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # (tutorial07: docker-compose.yml dòng 270–291 — bản đó thêm Telegram, bài 04)
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    container_name: alertmanager-course-01-alertmanager
+    ports:
+      - "29093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      # storage.path giữ silence và trạng thái "đã gửi thông báo nào" qua lần restart.
+      - alertmanager_data:/alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      # Alertmanager mặc định mở cổng 9094 để chạy cụm nhiều bản (HA). Chạy một bản → tắt đi.
+      - "--cluster.listen-address="
+      # Khác Prometheus: POST /-/reload của Alertmanager luôn bật sẵn, không cần cờ lifecycle.
+    networks: [monitoring]
+    restart: unless-stopped
+
+  webhook-echo:
+    image: python:3.11-slim
+    container_name: alertmanager-course-01-webhook-echo
+    command: ["python", "/app/echo.py"]
+    environment:
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "25001:5001"
+    volumes:
+      - ../shared/webhook-echo/echo.py:/app/echo.py:ro
+    networks: [monitoring]
+    restart: unless-stopped
+
+networks:
+  monitoring:
+    driver: bridge
+
+volumes:
+  prometheus_data:
+  alertmanager_data:

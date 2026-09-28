@@ -1,0 +1,37 @@
+{{/*
+  Template tin Telegram (= tutorial07: config/alertmanager/templates/telegram.tmpl, thêm runbook,
+  link dashboard, link Prometheus và link tạo silence).
+
+  Cú pháp Go template (trong comment này không viết dấu ngoặc nhọn kép vì comment KHÔNG lồng nhau):
+    define "tên" ... end   khai báo template con; alertmanager.yml gọi bằng template "tên" .
+    .                      dữ liệu hiện tại. Ở ngoài cùng = cả thông báo (payload bài 01):
+                             .Status .Alerts .GroupLabels .CommonLabels .CommonAnnotations .ExternalURL
+    range .Alerts          lặp; bên trong, "." là MỘT alert:
+                             .Status .Labels .Annotations .StartsAt .EndsAt .GeneratorURL
+    with X ... end         chỉ in khi X khác rỗng, và bên trong "." = X
+    dấu - sát delimiter    xóa khoảng trắng/xuống dòng ở phía đó → kiểm soát xuống dòng
+    | toUpper, | len       pipe: "warning" | toUpper → WARNING; .Alerts.Firing | len → số alert đang cháy
+
+  parse_mode HTML: chỉ dùng được thẻ b, i, code, a href...; ký tự nhỏ hơn, lớn hơn, và (&) trong
+  annotation làm Telegram từ chối tin (400 "can't parse entities").
+*/}}
+
+{{ define "telegram.course.message" -}}
+{{/* Tiêu đề: trạng thái CẢ NHÓM + label chung (có nhờ group_by [severity, component]). */ -}}
+{{ if eq .Status "firing" }}<b>[FIRING:{{ .Alerts.Firing | len }}]</b>{{ else }}<b>[RESOLVED]</b>{{ end }} {{ .CommonLabels.severity | toUpper }} · {{ .CommonLabels.component }} · env={{ .CommonLabels.env }}
+{{ range .Alerts }}
+<b>{{ .Labels.alertname }}</b> ({{ .Status }})
+{{ with .Annotations.summary }}{{ . }}
+{{ end }}{{ with .Annotations.description }}{{ . }}
+{{ end }}{{/*
+  .StartsAt là time.Time của Go. Format dùng NGÀY MẪU 2006-01-02 15:04:05 thay cho YYYY-MM-DD.
+  .Local = múi giờ của container Alertmanager — mặc định UTC (giờ Việt Nam = UTC+7).
+*/}}Bắt đầu: {{ .StartsAt.Local.Format "2006-01-02 15:04:05 MST" }}{{ if eq .Status "resolved" }}
+Kết thúc: {{ .EndsAt.Local.Format "2006-01-02 15:04:05 MST" }}{{ end }}{{ with .Annotations.runbook }}
+Xử lý: <code>{{ . }}</code>{{ end }}{{ with .Annotations.dashboard }}
+<a href="{{ . }}">Dashboard</a>{{ end }}{{ with .GeneratorURL }}
+<a href="{{ . }}">Biểu thức trên Prometheus</a>{{ end }}
+{{ end }}
+{{- /* ExternalURL = --web.external-url của Alertmanager → link mở thẳng trang tạo silence. */}}
+<a href="{{ .ExternalURL }}/#/silences/new">Tạo silence</a>
+{{- end }}

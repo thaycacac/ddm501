@@ -1,0 +1,94 @@
+# =============================================================================
+# BÀI 04 — như bài 03, receiver Telegram thật. Tắt stack bài 03 trước (cùng port).
+# =============================================================================
+#
+# Cần trước khi up:
+#   1. alertmanager-course/.env có TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+#   2. python3 scripts/test_telegram.py   (tạo alertmanager-course/secrets/telegram_bot_token)
+#
+#   docker compose --env-file ../.env up -d --build
+#
+# --env-file ../.env: Compose chỉ tự đọc file .env nằm CẠNH docker-compose.yml. File .env của
+# khóa nằm ở thư mục cha nên phải chỉ rõ, để ${TELEGRAM_CHAT_ID} bên dưới có giá trị.
+# =============================================================================
+
+name: alertmanager-course-04
+
+services:
+  api:
+    build:
+      context: ../../prometheus-course/lesson-03-instrument-fastapi
+      dockerfile: ../lesson-04-prometheus-server/Dockerfile
+    container_name: alertmanager-course-04-api
+    ports:
+      - "28000:8000"
+    networks: [monitoring]
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: alertmanager-course-04-prometheus
+    ports:
+      - "29090:9090"
+    volumes:
+      - ../lesson-01-connect-prometheus/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../lesson-02-routing-grouping/prometheus/alerts:/etc/prometheus/alerts:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=2d"
+      - "--web.enable-lifecycle"
+    networks: [monitoring]
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # (= tutorial07: docker-compose.yml dòng 270–291)
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    container_name: alertmanager-course-04-alertmanager
+    # Ghi đè entrypoint bằng shell để chạy HAI việc: sed rồi mới khởi động Alertmanager.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      # sed thay __TELEGRAM_CHAT_ID__ bằng biến môi trường của container, ghi ra /tmp.
+      # $$ = một ký tự $ thật: Compose không thay, để shell TRONG container thay.
+      # exec: Alertmanager thay chỗ shell làm process chính (PID 1) → nhận tín hiệu stop đúng cách.
+      - >-
+        sed "s/__TELEGRAM_CHAT_ID__/$${TELEGRAM_CHAT_ID}/" /etc/alertmanager/alertmanager.yml.tmpl > /tmp/alertmanager.yml &&
+        exec /bin/alertmanager --config.file=/tmp/alertmanager.yml --storage.path=/alertmanager --cluster.listen-address=
+    environment:
+      # Chỉ chat_id vào biến môi trường (không bí mật). Token KHÔNG đưa vào đây:
+      # biến môi trường lộ qua `docker inspect`; file mount thì không.
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+    ports:
+      - "29093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml.tmpl:ro
+      - ../secrets/telegram_bot_token:/etc/alertmanager/secrets/telegram_bot_token:ro
+      - ../lesson-03-inhibit-silence/amtool/config.yml:/etc/amtool/config.yml:ro
+      - alertmanager_data:/alertmanager
+    networks: [monitoring]
+    restart: unless-stopped
+
+  webhook-echo:
+    image: python:3.11-slim
+    container_name: alertmanager-course-04-webhook-echo
+    command: ["python", "/app/echo.py"]
+    environment:
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "25001:5001"
+    volumes:
+      - ../shared/webhook-echo/echo.py:/app/echo.py:ro
+    networks: [monitoring]
+    restart: unless-stopped
+
+networks:
+  monitoring:
+    driver: bridge
+
+volumes:
+  prometheus_data:
+  alertmanager_data:

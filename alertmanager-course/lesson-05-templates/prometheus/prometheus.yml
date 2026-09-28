@@ -1,0 +1,37 @@
+# Như bài 01, thêm external_labels.
+# (tutorial07: config/prometheus.yml dòng 5–12)
+
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+  # Gắn vào MỌI alert Prometheus gửi cho Alertmanager (và dữ liệu gửi ra ngoài khác).
+  # Nhiều Prometheus (dev, staging, prod) cùng gửi về một Alertmanager → label này cho biết
+  # alert từ đâu tới; template in ra bằng .CommonLabels.env.
+  # Tutorial07: cluster: 'production', env: 'ml-monitoring'.
+  external_labels:
+    cluster: course
+    env: dev
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+rule_files:
+  - /etc/prometheus/alerts/*.yml
+
+scrape_configs:
+  - job_name: wdbc-api
+    static_configs:
+      - targets: ["api:8000"]
+        labels:
+          service: wdbc-api
+          env: course
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: alertmanager
+    static_configs:
+      - targets: ["alertmanager:9093"]

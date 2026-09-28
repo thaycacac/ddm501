@@ -1,0 +1,71 @@
+# Bài 02 — cây route và gộp nhóm.
+# (tutorial07: config/alertmanager/alertmanager.yml dòng 13–23)
+#
+# Cây route đọc từ trên xuống:
+#   - Mọi alert vào ở route GỐC.
+#   - Alertmanager duyệt các route con THEO THỨ TỰ; route con đầu tiên khớp matchers sẽ nhận
+#     alert và DỪNG duyệt — trừ khi route đó có `continue: true` thì duyệt tiếp các route sau.
+#   - Không route con nào khớp → alert ở lại route gốc, gửi cho receiver mặc định.
+#   - Route con KẾ THỪA mọi thiết lập của cha (receiver, group_by, 3 mốc thời gian),
+#     chỉ ghi đè cái nó khai báo.
+
+route:
+  receiver: team-chat
+
+  # Nhóm = các alert có CÙNG giá trị của các label này → gộp thành MỘT thông báo.
+  # Giống tutorial07. Label nào alert không có thì coi như giá trị rỗng.
+  #   group_by: [alertname]  → mỗi loại alert một nhóm (bài 01)
+  #   group_by: ['...']      → không gộp: mỗi alert một thông báo riêng
+  group_by: [severity, component]
+
+  # Ba mốc thời gian (rút ngắn để học; tutorial07: 30s / 2m / 4h):
+  #   group_wait      nhóm MỚI xuất hiện → đợi bấy lâu rồi mới gửi tin đầu tiên, để gom các
+  #                   alert đến gần như cùng lúc (API chết kéo theo 3 alert → 1 tin, không phải 3).
+  #   group_interval  nhóm đã gửi rồi mà CÓ THAY ĐỔI (thêm alert mới, có alert resolved)
+  #                   → tin cập nhật gửi sớm nhất sau bấy lâu kể từ tin trước.
+  #   repeat_interval nhóm KHÔNG đổi gì mà vẫn còn cháy → nhắc lại sau bấy lâu.
+  #                   Alertmanager chỉ xét ở các "nhịp" group_interval, nên nhắc lại thực tế
+  #                   rơi vào khoảng repeat_interval .. repeat_interval + group_interval.
+  group_wait: 10s
+  group_interval: 30s
+  repeat_interval: 3m
+
+  routes:
+    # 1) Ghi sổ MỌI alert critical/warning, rồi `continue: true` để alert đi tiếp xuống dưới.
+    #    Không có continue → alert dừng ở đây, oncall và ml-team không bao giờ nhận được.
+    - receiver: audit-log
+      matchers:
+        - severity=~"critical|warning"
+      continue: true
+
+    # 2) Critical → người trực, nhắc lại dày hơn (giống tutorial07: route critical, repeat 1h).
+    - receiver: oncall
+      matchers:
+        - severity="critical"
+      repeat_interval: 1m
+
+    # 3) Alert của model (drift, dự đoán lệch) → nhóm ML. Chỉ tới được đây nếu KHÔNG critical,
+    #    vì route oncall phía trên đã khớp và dừng.
+    - receiver: ml-team
+      matchers:
+        - component="model"
+
+    # BẪY: warning của api khớp audit-log (continue) rồi không khớp gì nữa → CHỈ tới audit-log,
+    # KHÔNG tới team-chat. Receiver gốc chỉ nhận khi KHÔNG route con nào khớp (kể cả route
+    # có continue). Vì vậy team-chat ở đây chỉ nhận alert không có severity critical/warning.
+
+# Bốn receiver cùng trỏ về webhook-echo (khác path). Trong log, trường "receiver" cho biết
+# alert đã đi nhánh nào. Thực tế mỗi receiver là một kênh khác nhau: PagerDuty, Telegram, Slack...
+receivers:
+  - name: team-chat
+    webhook_configs:
+      - url: http://webhook-echo:5001/team-chat
+  - name: audit-log
+    webhook_configs:
+      - url: http://webhook-echo:5001/audit-log
+  - name: oncall
+    webhook_configs:
+      - url: http://webhook-echo:5001/oncall
+  - name: ml-team
+    webhook_configs:
+      - url: http://webhook-echo:5001/ml-team

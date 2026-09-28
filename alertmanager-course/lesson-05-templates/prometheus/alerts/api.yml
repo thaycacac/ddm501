@@ -1,0 +1,34 @@
+# Như bài 02, thêm annotation runbook và dashboard (tutorial07 cũng có trong evidently_alerts.yml).
+# Annotation là chữ tự do cho NGƯỜI đọc; template bài này in ra nếu có ({{ with ... }}).
+# Không dùng ký tự < > & trong annotation: parse_mode HTML của Telegram sẽ từ chối tin.
+
+groups:
+  - name: wdbc-api
+    rules:
+      - alert: ApiDown
+        expr: up{job="wdbc-api"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "The prediction API is not answering scrapes"
+          description: "Prometheus has failed to scrape {{ $labels.instance }} for 30 seconds."
+          runbook: "docker compose ps api; docker compose logs --tail 50 api; docker compose start api"
+          dashboard: "http://127.0.0.1:29090/targets"
+
+      - alert: HighErrorRate
+        expr: >-
+          sum(rate(wdbc_errors_total[1m]))
+          /
+          (sum(rate(wdbc_errors_total[1m])) + sum(rate(wdbc_predictions_total[1m])))
+          > 0.05
+        for: 1m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "More than 5% of requests are failing"
+          description: "Current error share: {{ $value | humanizePercentage }}."
+          runbook: "Check wdbc_errors_total by reason: a client may be sending requests with missing features."
+          dashboard: "http://127.0.0.1:29090/graph?g0.expr=sum+by+(reason)+(rate(wdbc_errors_total%5B1m%5D))"

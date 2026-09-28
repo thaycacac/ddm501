@@ -1,0 +1,6 @@
+# File cấu hình của amtool (mount vào /etc/amtool/config.yml trong container Alertmanager).
+# Nhờ file này, mọi lệnh amtool không cần gõ lại --alertmanager.url và --author.
+alertmanager.url: "http://localhost:9093"
+author: "alertmanager-course"
+# Silence bắt buộc có --comment: người khác đọc được VÌ SAO alert bị tắt.
+comment_required: true

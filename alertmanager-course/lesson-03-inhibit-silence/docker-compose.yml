@@ -1,0 +1,82 @@
+# =============================================================================
+# BÀI 03 — như bài 02, đổi alertmanager.yml (inhibit_rules) và thêm file cấu hình amtool.
+# Tắt stack bài 02 trước (cùng port).
+# =============================================================================
+#
+#   docker compose up -d --build
+#   Prometheus    http://127.0.0.1:29090/alerts
+#   Alertmanager  http://127.0.0.1:29093          (tab Silences)
+#   webhook-echo  docker compose logs -f webhook-echo
+# =============================================================================
+
+name: alertmanager-course-03
+
+services:
+  api:
+    build:
+      context: ../../prometheus-course/lesson-03-instrument-fastapi
+      dockerfile: ../lesson-04-prometheus-server/Dockerfile
+    container_name: alertmanager-course-03-api
+    ports:
+      - "28000:8000"
+    networks: [monitoring]
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: alertmanager-course-03-prometheus
+    ports:
+      - "29090:9090"
+    volumes:
+      - ../lesson-01-connect-prometheus/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # Rule có label component (bài 02) — rule B của inhibit dựa vào label này.
+      - ../lesson-02-routing-grouping/prometheus/alerts:/etc/prometheus/alerts:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=2d"
+      - "--web.enable-lifecycle"
+    networks: [monitoring]
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    container_name: alertmanager-course-03-alertmanager
+    ports:
+      - "29093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./amtool/config.yml:/etc/amtool/config.yml:ro
+      # Silence được lưu ở storage.path → restart container không mất silence.
+      - alertmanager_data:/alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      - "--cluster.listen-address="
+    networks: [monitoring]
+    restart: unless-stopped
+
+  webhook-echo:
+    image: python:3.11-slim
+    container_name: alertmanager-course-03-webhook-echo
+    command: ["python", "/app/echo.py"]
+    environment:
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "25001:5001"
+    volumes:
+      - ../shared/webhook-echo/echo.py:/app/echo.py:ro
+    networks: [monitoring]
+    restart: unless-stopped
+
+networks:
+  monitoring:
+    driver: bridge
+
+volumes:
+  prometheus_data:
+  alertmanager_data:

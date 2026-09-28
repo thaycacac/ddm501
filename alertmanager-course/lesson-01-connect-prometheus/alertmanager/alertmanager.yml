@@ -1,0 +1,25 @@
+# Cấu hình Alertmanager tối thiểu: MỌI alert → MỘT receiver webhook.
+# (tutorial07: config/alertmanager/alertmanager.yml — bản đầy đủ học dần ở bài 02–05)
+#
+# Ba khối luôn có:
+#   route      alert đi đâu, gộp thế nào, nhắc lại bao lâu (bài 02 học kỹ)
+#   receivers  "đi đâu" cụ thể: webhook, telegram, email, slack...
+#   (tùy chọn) inhibit_rules, templates, global (bài 03, 05)
+
+route:
+  # Receiver mặc định: alert không khớp route con nào sẽ về đây. Bài này chưa có route con.
+  receiver: webhook-echo
+  # Gộp các alert cùng alertname vào MỘT thông báo.
+  group_by: [alertname]
+  # Rút ngắn để học nhanh (mặc định Alertmanager: 30s / 5m / 4h). Ý nghĩa: bài 02.
+  group_wait: 10s
+  group_interval: 30s
+  repeat_interval: 1h
+
+receivers:
+  - name: webhook-echo
+    webhook_configs:
+      # Tên service trong compose = hostname trong mạng Docker (như api:8000 ở khóa Prometheus).
+      - url: http://webhook-echo:5001/
+        # Gửi thêm một thông báo khi alert HẾT (resolved). Webhook mặc định true, ghi rõ cho dễ đọc.
+        send_resolved: true
