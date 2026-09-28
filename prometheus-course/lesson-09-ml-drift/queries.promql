@@ -1,0 +1,21 @@
+# Bài 09 — chạy ở http://127.0.0.1:29090/graph (hoặc Grafana → Explore), khung 15m.
+
+# Tỉ lệ ác tính theo cửa sổ SỐ LƯỢNG (deque 200 dự đoán, tính trong process).
+wdbc_malignant_share
+
+# Tỉ lệ ác tính theo cửa sổ THỜI GIAN (5 phút), tính từ counter bằng PromQL.
+# So với câu trên: mượt hơn, phản ứng chậm hơn, không mất khi restart, gộp được nhiều instance.
+sum(rate(wdbc_predictions_total{outcome="malignant"}[5m]))
+/
+sum(rate(wdbc_predictions_total[5m]))
+
+# Khoảng cách tới baseline — chính là $value trong annotation của MalignantShareShift.
+abs(wdbc_malignant_share - 0.37)
+
+# Điều kiện alert (có kết quả = đang lệch quá ngưỡng).
+abs(wdbc_malignant_share - 0.37) > 0.15
+
+# Trong lúc drift: ba tín hiệu "kỹ thuật" vẫn bình thường.
+sum(rate(wdbc_errors_total[1m])) / (sum(rate(wdbc_errors_total[1m])) + sum(rate(wdbc_predictions_total[1m])))
+histogram_quantile(0.95, sum by (le) (rate(wdbc_prediction_latency_seconds_bucket[1m])))
+up{job="wdbc-api"}
