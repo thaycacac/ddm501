@@ -1,0 +1,167 @@
+{
+  "uid": "evidently-course",
+  "title": "Evidently drift (course)",
+  "tags": ["evidently", "drift", "course"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-30m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Dataset drift",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-datasource" },
+      "targets": [{ "refId": "A", "expr": "evidently_data_drift_detected", "instant": true }],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "KHÔNG DRIFT", "color": "green" }, "1": { "text": "DRIFT", "color": "red" } } }
+          ],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "background", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Tỷ lệ feature drift (drift_score)",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-datasource" },
+      "targets": [{ "refId": "A", "expr": "evidently_drift_score", "instant": true }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit", "min": 0, "max": 1,
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 0.2 }, { "color": "red", "value": 0.5 }] }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Số feature drift",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-datasource" },
+      "targets": [{ "refId": "A", "expr": "evidently_drifted_features_count", "instant": true }],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 1 }, { "color": "red", "value": 3 }] }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Lần phân tích cuối cách đây",
+      "description": "time() - evidently_last_analysis_timestamp_seconds. Gauge drift chỉ đúng nếu số này nhỏ.",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-datasource" },
+      "targets": [{ "refId": "A", "expr": "time() - evidently_last_analysis_timestamp_seconds", "instant": true }],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 120 }] }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "value", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false } }
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Từng feature: drift / drift_score thô / missing",
+      "description": "drift_score: với K-S p_value thì NHỎ = drift; với Wasserstein/Jensen-Shannon thì LỚN = drift (xem cột stattest).",
+      "gridPos": { "h": 11, "w": 12, "x": 0, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-datasource" },
+      "targets": [
+        { "refId": "A", "expr": "max by (feature_name) (evidently_feature_drift)", "format": "table", "instant": true },
+        { "refId": "B", "expr": "max by (feature_name, stattest) (evidently_feature_drift_score)", "format": "table", "instant": true },
+        { "refId": "C", "expr": "max by (feature_name) (evidently_missing_values_ratio)", "format": "table", "instant": true }
+      ],
+      "transformations": [
+        { "id": "merge", "options": {} },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true },
+            "renameByName": { "feature_name": "feature", "Value #A": "drift", "Value #B": "drift_score", "Value #C": "missing" }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "drift" },
+            "properties": [
+              { "id": "mappings", "value": [{ "type": "value", "options": { "0": { "text": "ok", "color": "green" }, "1": { "text": "DRIFT", "color": "red" } } }] },
+              { "id": "custom.cellOptions", "value": { "type": "color-background" } }
+            ]
+          },
+          { "matcher": { "id": "byName", "options": "drift_score" }, "properties": [{ "id": "decimals", "value": 4 }] },
+          { "matcher": { "id": "byName", "options": "missing" }, "properties": [{ "id": "unit", "value": "percentunit" }] }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "drift", "desc": true }] }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "drift_score và số feature drift theo thời gian",
+      "gridPos": { "h": 11, "w": 12, "x": 12, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-datasource" },
+      "targets": [
+        { "refId": "A", "expr": "evidently_drift_score", "legendFormat": "drift_score (share)" },
+        { "refId": "B", "expr": "evidently_drifted_features_count", "legendFormat": "số feature drift" }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "lineInterpolation": "stepAfter", "fillOpacity": 10 } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "drift_score (share)" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "max", "value": 1 }] },
+          { "matcher": { "id": "byName", "options": "số feature drift" }, "properties": [{ "id": "custom.axisPlacement", "value": "right" }] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Tỷ lệ missing theo feature",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-datasource" },
+      "targets": [{ "refId": "A", "expr": "evidently_missing_values_ratio > 0", "legendFormat": "{{feature_name}}" }],
+      "fieldConfig": {
+        "defaults": { "unit": "percentunit", "min": 0, "max": 1, "custom": { "lineInterpolation": "stepAfter" } },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Số lần phân tích (10 phút) và thời gian trung bình mỗi lần",
+      "description": "Phân tích thưa (theo lịch) → dùng increase/avg thay vì histogram_quantile(rate[5m]) như tutorial07: cửa sổ 5 phút không có lần nào thì quantile rỗng.",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus-datasource" },
+      "targets": [
+        { "refId": "A", "expr": "increase(evidently_analysis_total[10m])", "legendFormat": "số lần / 10 phút" },
+        { "refId": "B", "expr": "increase(evidently_analysis_duration_seconds_sum[10m]) / increase(evidently_analysis_duration_seconds_count[10m])", "legendFormat": "giây / lần" }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "giây / lần" }, "properties": [{ "id": "unit", "value": "s" }, { "id": "custom.axisPlacement", "value": "right" }] }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    }
+  ]
+}

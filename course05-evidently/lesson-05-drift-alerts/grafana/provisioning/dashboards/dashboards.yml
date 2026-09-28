@@ -1,0 +1,12 @@
+apiVersion: 1
+providers:
+  - name: evidently-course
+    orgId: 1
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      # Mỗi thư mục con thành một folder trong Grafana: "course" và "tutorial07"
+      foldersFromFilesStructure: true

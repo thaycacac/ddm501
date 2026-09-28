@@ -2,7 +2,7 @@
 
 Mục tiêu cuối: đọc và giải thích được **từng dòng** của `../tutorial04/ddm501-t03-airflow`
 (DAG `wdbc_pipeline`: ingest → validate → split → scale → report), rồi ghép Airflow
-với stack MLflow đã dựng ở `../mlflow-course`.
+với stack MLflow đã dựng ở `../course01-mlflow`. Phần nâng cao (bài 06–10) phục vụ Tutorial 07.
 
 Vì sao cần: MLflow trả lời "đã train gì, model nào đang dùng". Airflow trả lời
 "ai chạy pipeline mỗi ngày, theo thứ tự nào, lỗi thì thử lại ra sao, chạy bù ngày
@@ -13,7 +13,7 @@ cũ thế nào, log từng bước ở đâu".
 | Service | Port khóa học | Ghi chú |
 |---------|---------------|---------|
 | Airflow UI | 28080 | 8080 của Lab 2, 18080 của tutorial04 → bật cùng lúc được. Đăng nhập `admin` / `admin` |
-| (MLflow course) | 5001 / 25432 / 29000 | chỉ cần cho bài Bonus |
+| (MLflow course) | 5001 / 25432 / 29000 | chỉ cần cho bài 10 |
 
 ## Quy ước mỗi bài
 
@@ -35,13 +35,23 @@ cũ thế nào, log từng bước ở đâu".
 | 02 | Cấu trúc DAG + lịch chạy: `schedule`, `start_date`, `catchup`, logical date / `ds`, `dags test`, pause/unpause | `wdbc_pipeline.py` dòng 38–51 | Xong |
 | 03 | TaskFlow `@task` + XCom: truyền dict, phụ thuộc tự động, `>>` khi truyền qua file, fan-in | dòng 54–69, 160–165 | Xong |
 | 04 | Idempotency: thư mục theo `ds`, snapshot, parquet, chia bằng hash, `history.jsonl`, `backfill` | `run_dir`, `ingest`, `split`, `report` | Xong |
-| **05** | Lỗi và retry: `retries` + backoff, `AirflowFailException`, quarantine + ngưỡng, log trong Grid | `validate`, `scripts/corrupt_extract.py` | **Đang học** |
-| Capstone T04 | Chạy stack tutorial04, làm 4 bài tập README, giải thích từng dòng | toàn bộ `../tutorial04/ddm501-t03-airflow` | Chưa tạo |
-| Bonus | DAG train + register vào stack MLflow của `mlflow-course` bài 16 | nối với `../mlflow-course` | Chưa tạo |
+| 05 | Lỗi và retry: `retries` + backoff, `AirflowFailException`, quarantine + ngưỡng, log trong Grid | `validate`, `scripts/corrupt_extract.py` | Xong |
+| Capstone T04 | (tùy chọn) Chạy stack tutorial04, làm 4 bài tập README, giải thích từng dòng | toàn bộ `../tutorial04/ddm501-t03-airflow` | Chưa tạo |
+
+### Phần nâng cao (cho Tutorial 07)
+
+| Bài | Chủ đề | Ánh xạ vào tutorial07 | Status |
+|-----|--------|------------------------|--------|
+| 06 | Rẽ nhánh và tham số: `@task.branch`, `EmptyOperator`, `trigger_rule`, `Param`, `dag_run.conf` | `airflow_dags/drift_monitoring.py` | Xong |
+| 07 | DAG gọi DAG + callback: `TriggerDagRunOperator`, `on_failure_callback`, `max_active_runs`, util Telegram | `drift_monitoring.py` → `model_retrain.py`, `utils/telegram_alert.py` | Xong |
+| 08 | Airflow kiểu production: LocalExecutor + Postgres, `airflow-init`, webserver/scheduler tách riêng, YAML anchor | `airflow/**`, service airflow-* trong `docker-compose.yml` | Xong |
+| 09 | Metric của Airflow: StatsD → statsd-exporter → Prometheus, file mapping | `config/statsd_mapping.yml` | Xong |
+| **10** | DAG train lại có quality gate: train → so sánh → register/promote alias trong MLflow → gọi `/model/reload` (thay Bonus cũ) | `airflow_dags/model_retrain.py`, nối `../course01-mlflow` bài 16 | **Đang học** |
+| Capstone T07 | Chạy toàn bộ stack tutorial07, tái hiện bảng Evidence, sửa các alert hỏng, giải thích từng dòng | toàn bộ `../tutorial07` | Chưa tạo |
 
 ## Bài đang học
 
 ```bash
-cd lesson-05-retries-failures
+cd lesson-10-model-retrain-mlflow
 python READ_WITH_ME.py
 ```

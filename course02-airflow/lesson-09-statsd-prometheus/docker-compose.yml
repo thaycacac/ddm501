@@ -1,0 +1,146 @@
+# =============================================================================
+# BÀI 09 — Stack bài 08 + StatsD → statsd-exporter → Prometheus
+#           (= tutorial07/docker-compose.yml: AIRFLOW__METRICS__*, service statsd-exporter,
+#              tutorial07/config/statsd_mapping.yml, job "airflow" trong config/prometheus.yml)
+# Tắt stack bài 08 (port 28080) và mọi stack đang giữ 29090.
+# =============================================================================
+#
+#   docker compose up -d
+#   Airflow          http://127.0.0.1:28080   admin / admin
+#   statsd-exporter  http://127.0.0.1:29102/metrics
+#   Prometheus       http://127.0.0.1:29090   (/targets, /alerts, /graph)
+# =============================================================================
+
+name: airflow-course-09
+
+x-airflow-common: &airflow-common
+  image: airflow-course:2.8.4
+  user: "${AIRFLOW_UID:-50000}:0"
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://mlflow:mlflow@postgres:5432/airflow
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+    AIRFLOW__WEBSERVER__BASE_URL: http://localhost:28080
+    AIRFLOW__WEBSERVER__SECRET_KEY: local-dev-secret-change-me
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL: "30"
+    # --- 4 dòng metric, y hệt tutorial07 ---
+    # Airflow tự BẮN (push) metric theo giao thức StatsD qua UDP tới host:port này.
+    # UDP = gửi xong không chờ trả lời: exporter chưa lên / sai tên host → metric mất im lặng, Airflow
+    # không báo lỗi gì. Thư viện `statsd` có sẵn trong image apache/airflow.
+    AIRFLOW__METRICS__STATSD_ON: "true"
+    AIRFLOW__METRICS__STATSD_HOST: statsd-exporter
+    AIRFLOW__METRICS__STATSD_PORT: "9125"
+    # Tiền tố của mọi tên metric: "airflow.ti_failures", "airflow.dagrun.duration.failed.<dag_id>"...
+    AIRFLOW__METRICS__STATSD_PREFIX: airflow
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    # Dùng lại đúng script init của bài 08
+    - ../lesson-08-local-executor-postgres/airflow/init_airflow.sh:/opt/airflow/init_airflow.sh:ro
+
+services:
+  postgres:
+    image: postgres:13
+    container_name: airflow-course-09-postgres
+    environment:
+      POSTGRES_USER: mlflow
+      POSTGRES_PASSWORD: mlflow
+      POSTGRES_DB: mlflow
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "mlflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  airflow-init:
+    <<: *airflow-common
+    container_name: airflow-course-09-airflow-init
+    entrypoint: /bin/bash
+    command: /opt/airflow/init_airflow.sh
+    environment:
+      <<: *airflow-common-env
+      AIRFLOW_ADMIN_USER: admin
+      AIRFLOW_ADMIN_PASSWORD: admin
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: mlflow
+      POSTGRES_PASSWORD: mlflow
+      POSTGRES_DB: mlflow
+      AIRFLOW_DB_NAME: airflow
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: airflow-course-09-airflow-webserver
+    command: webserver
+    ports:
+      - "28080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      statsd-exporter:
+        condition: service_started
+    restart: unless-stopped
+
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: airflow-course-09-airflow-scheduler
+    command: scheduler
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+      statsd-exporter:
+        condition: service_started
+    restart: unless-stopped
+
+  # Cầu nối: NHẬN StatsD (push, UDP 9125) → giữ trong bộ nhớ → PHƠI /metrics (pull, 9102) cho Prometheus.
+  statsd-exporter:
+    image: prom/statsd-exporter:v0.28.0
+    container_name: airflow-course-09-statsd
+    command:
+      - "--statsd.mapping-config=/tmp/statsd_mapping.yml"
+    ports:
+      - "29102:9102"        # /metrics — Prometheus (và bạn) đọc ở đây
+      - "29125:9125/udp"    # cổng nhận StatsD — mở ra máy để scripts/statsd_lab.py bắn thử
+    volumes:
+      - ./statsd/statsd_mapping.yml:/tmp/statsd_mapping.yml:ro
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: airflow-course-09-prometheus
+    ports:
+      - "29090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=2d"
+      - "--web.enable-lifecycle"
+    depends_on: [statsd-exporter]
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  prometheus_data:

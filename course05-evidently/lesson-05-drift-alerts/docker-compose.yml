@@ -1,0 +1,128 @@
+# =============================================================================
+# BÀI 05 — Evidently service (bài 04) + Prometheus + Alertmanager (Telegram) + Grafana
+# (= phần drift của tutorial07/docker-compose.yml: evidently, prometheus, alertmanager, grafana)
+#
+# Tắt stack bài 04 trước (cùng port 28101), và mọi stack khác đang giữ 29090/29093/23000/25001.
+#
+#   docker compose --env-file ../../course04-alertmanager/.env up -d --build
+#
+#   Evidently     http://127.0.0.1:28101/docs
+#   Prometheus    http://127.0.0.1:29090/alerts
+#   Alertmanager  http://127.0.0.1:29093
+#   Grafana       http://127.0.0.1:23000   (xem ẩn danh; sửa: admin / admin)
+#   webhook-echo  docker compose logs -f webhook-echo
+# =============================================================================
+
+name: evidently-course-05
+
+services:
+  evidently:
+    # Dùng lại đúng service bài 04 (không copy code). Cùng tên image → không build lại nếu đã có.
+    build: ../lesson-04-evidently-service/app
+    image: evidently-course-service:0.4.26
+    container_name: evidently-course-05-evidently
+    ports:
+      - "28101:8001"
+    environment:
+      EVIDENTLY_MIN_SAMPLES: "100"
+      EVIDENTLY_DEFAULT_WINDOW: "100"
+      EVIDENTLY_DRIFT_SHARE: "0.5"
+      EVIDENTLY_KEEP_REPORTS: "20"
+    volumes:
+      - evidently_reference:/app/reference
+      - evidently_reports:/app/reports
+    networks: [monitoring]
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: evidently-course-05-prometheus
+    ports:
+      - "29090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # Hai bộ rule chạy SONG SONG để so sánh trên trang /alerts:
+      #   evidently_course.yml          bộ đã sửa (label source=course → được gửi Telegram)
+      #   tutorial07_evidently_alerts   file GỐC của tutorial07, mount thẳng, không sửa một chữ
+      - ./prometheus/rules/evidently_course.yml:/etc/prometheus/rules/evidently_course.yml:ro
+      - ../../tutorial07/config/prometheus/evidently_alerts.yml:/etc/prometheus/rules/tutorial07_evidently_alerts.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=2d"
+      - "--web.enable-lifecycle"
+      - "--web.external-url=http://127.0.0.1:29090"
+    networks: [monitoring]
+    depends_on: [evidently]
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    container_name: evidently-course-05-alertmanager
+    # Mẹo sed của alertmanager-course bài 04: Alertmanager không tự thay biến môi trường.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        sed "s/__TELEGRAM_CHAT_ID__/$${TELEGRAM_CHAT_ID}/" /etc/alertmanager/alertmanager.yml.tmpl > /tmp/alertmanager.yml &&
+        exec /bin/alertmanager --config.file=/tmp/alertmanager.yml --storage.path=/alertmanager
+        --cluster.listen-address= --web.external-url=http://127.0.0.1:29093
+    environment:
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+    ports:
+      - "29093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml.tmpl:ro
+      # Dùng lại template tin nhắn và bot token của khóa Alertmanager
+      - ../../course04-alertmanager/lesson-05-templates/templates:/etc/alertmanager/templates:ro
+      - ../../course04-alertmanager/secrets/telegram_bot_token:/etc/alertmanager/secrets/telegram_bot_token:ro
+      - alertmanager_data:/alertmanager
+    networks: [monitoring]
+    restart: unless-stopped
+
+  webhook-echo:
+    image: python:3.11-slim
+    container_name: evidently-course-05-webhook-echo
+    command: ["python", "/app/echo.py"]
+    environment:
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "25001:5001"
+    volumes:
+      - ../../course04-alertmanager/shared/webhook-echo/echo.py:/app/echo.py:ro
+    networks: [monitoring]
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: evidently-course-05-grafana
+    ports:
+      - "23000:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      # Hai thư mục dashboard → hai folder trong Grafana (foldersFromFilesStructure):
+      #   course/      dashboard của khóa (đọc đủ gauge mới)
+      #   tutorial07/  dashboard GỐC của tutorial07, mount thẳng để so sánh
+      - ./grafana/dashboards:/var/lib/grafana/dashboards/course:ro
+      - ../../tutorial07/config/grafana/dashboards/evidently-drift-monitoring.json:/var/lib/grafana/dashboards/tutorial07/evidently-drift-monitoring.json:ro
+      - grafana_data:/var/lib/grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    networks: [monitoring]
+    depends_on: [prometheus]
+    restart: unless-stopped
+
+networks:
+  monitoring:
+    driver: bridge
+
+volumes:
+  evidently_reference:
+  evidently_reports:
+  prometheus_data:
+  alertmanager_data:
+  grafana_data:

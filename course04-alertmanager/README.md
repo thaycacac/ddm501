@@ -55,11 +55,8 @@ Cùng port với khóa Prometheus → **tắt stack `prometheus-course` trước
 | 02 | Routing và grouping: cây `route`, `group_by`, `group_wait` / `group_interval` / `repeat_interval`, `matchers`, `continue` | `alertmanager.yml` dòng 13–23 | Xong |
 | 03 | Inhibition và silence | `alertmanager.yml` dòng 25–31 | Xong |
 | 04 | Receiver Telegram: BotFather, `chat_id`, `telegram_configs`, `bot_token_file`, mẹo `sed` | `docker-compose.yml` dòng 270–291, `scripts/test_telegram.sh` | Xong |
-| **05** | Template tin nhắn (Go template), `external_labels`, annotation runbook/dashboard | `templates/telegram.tmpl` | **Đang học** |
+| 05 | Template tin nhắn (Go template), `external_labels`, annotation runbook/dashboard | `templates/telegram.tmpl` | Xong |
 
-## Bài đang học
+## Trạng thái
 
-```bash
-cd lesson-05-templates
-python3 READ_WITH_ME.py
-```
+Khóa đã xong. Học tiếp ở `../evidently-course`.

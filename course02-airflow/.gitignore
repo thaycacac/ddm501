@@ -8,6 +8,8 @@ webserver_config.py
 standalone_admin_password.txt
 .env
 **/data/raw/*.orig
+**/data/*.jsonl
+**/data/registry.json
 
 __pycache__/
 *.pyc

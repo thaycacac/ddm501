@@ -1,0 +1,77 @@
+# =============================================================================
+# BÀI 09 — Mapping StatsD → Prometheus.
+# Phần 1 giống HỆT tutorial07/config/statsd_mapping.yml; phần 2 là metric bổ sung cho bài học.
+#
+# Vì sao cần mapping: StatsD nhét dag_id / task_id VÀO TÊN metric, Prometheus muốn chúng là LABEL.
+#   airflow.ti.finish.lesson09_metrics_demo.load.failed
+#     → airflow_task_finish_total{dag_id="lesson09_metrics_demo", task_id="load", state="failed"}
+#   Không có mapping: vẫn được xuất, nhưng tên = thay "." bằng "_" và KHÔNG có label
+#     → airflow_ti_finish_lesson09_metrics_demo_load_failed (mỗi dag/task một tên metric → không query nổi)
+#
+# Cú pháp glob (mặc định): "*" khớp đúng MỘT đoạn giữa hai dấu chấm; "$1", "$2"... = đoạn khớp thứ mấy.
+# Luật đầu tiên khớp thắng → luật cụ thể đặt trước luật chung.
+#
+# Loại metric theo hậu tố StatsD:
+#   |c  counter → counter Prometheus (cộng dồn trong exporter; exporter restart là về 0 → dùng rate/increase)
+#   |g  gauge   → gauge
+#   |ms timer   → exporter đổi ms → GIÂY, xuất dạng summary: <name>{quantile=...}, <name>_sum, <name>_count
+#                 (_count = số lần đo = số run / số task đã xong)
+# =============================================================================
+
+mappings:
+  # ---------------- Phần 1: tutorial07 ----------------
+  # Timer, Airflow bắn khi một DAG RUN kết thúc: dagrun.duration.<success|failed>.<dag_id>
+  - match: "airflow.dagrun.duration.success.*"
+    name: "airflow_dagrun_duration_success_seconds"
+    labels:
+      dag_id: "$1"
+
+  - match: "airflow.dagrun.duration.failed.*"
+    name: "airflow_dagrun_duration_failed_seconds"
+    labels:
+      dag_id: "$1"
+
+  # Timer, bắn khi một TASK kết thúc: dag.<dag_id>.<task_id>.duration
+  - match: "airflow.dag.*.*.duration"
+    name: "airflow_task_duration_seconds"
+    labels:
+      dag_id: "$1"
+      task_id: "$2"
+
+  # Counter: ti.finish.<dag_id>.<task_id>.<state> — state = success / failed / skipped / upstream_failed...
+  - match: "airflow.ti.finish.*.*.*"
+    name: "airflow_task_finish_total"
+    labels:
+      dag_id: "$1"
+      task_id: "$2"
+      state: "$3"
+
+  - match: "airflow.ti.start.*.*"
+    name: "airflow_task_start_total"
+    labels:
+      dag_id: "$1"
+      task_id: "$2"
+
+  # Counter toàn hệ thống, không có dag_id
+  - match: "airflow.ti_failures"
+    name: "airflow_task_failures_total"
+
+  - match: "airflow.ti_successes"
+    name: "airflow_task_successes_total"
+
+  # Counter: scheduler cộng 1 mỗi vòng lặp (~ mỗi giây). Ngừng tăng = scheduler chết / treo.
+  - match: "airflow.scheduler_heartbeat"
+    name: "airflow_scheduler_heartbeat_total"
+
+  # Gauge: số file DAG đang lỗi import (Broken DAG trên UI)
+  - match: "airflow.dag_processing.import_errors"
+    name: "airflow_dag_import_errors"
+
+  # ---------------- Phần 2: bổ sung cho bài học ----------------
+  # Gauge của executor: bao nhiêu task đang chạy / đang chờ / còn bao nhiêu slot (parallelism bài 08)
+  - match: "airflow.executor.running_tasks"
+    name: "airflow_executor_running_tasks"
+  - match: "airflow.executor.queued_tasks"
+    name: "airflow_executor_queued_tasks"
+  - match: "airflow.executor.open_slots"
+    name: "airflow_executor_open_slots"

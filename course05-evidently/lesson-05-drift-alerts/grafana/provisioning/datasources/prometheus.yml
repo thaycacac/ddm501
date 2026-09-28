@@ -1,0 +1,11 @@
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+    # uid TRÙNG với uid mà dashboard gốc của tutorial07 tham chiếu ("prometheus-datasource")
+    # → mount thẳng file JSON của tutorial07 vào là chạy, không phải sửa.
+    uid: prometheus-datasource
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false

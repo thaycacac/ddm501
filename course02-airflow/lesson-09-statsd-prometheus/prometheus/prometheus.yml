@@ -1,0 +1,20 @@
+# BÀI 09 — Prometheus chỉ scrape statsd-exporter (job "airflow", giống tutorial07).
+# Không scrape thẳng Airflow: Airflow 2.x không có endpoint /metrics, nó PUSH StatsD.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: airflow
+    static_configs:
+      - targets: ["statsd-exporter:9102"]
+        labels:
+          service: airflow
+          application: orchestration

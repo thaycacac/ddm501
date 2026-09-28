@@ -1,0 +1,26 @@
+# Bài 04 — Evidently thành service (tương ứng service `evidently` trong tutorial07/docker-compose.yml)
+name: evidently-course-04
+
+services:
+  evidently:
+    build: ./app
+    image: evidently-course-service:0.4.26
+    container_name: evidently-course-04-evidently
+    ports:
+      - "28101:8001"
+    environment:
+      # tutorial07 cũng khai báo EVIDENTLY_* nhưng main.py KHÔNG đọc biến nào → cấu hình chết.
+      # Service của khóa đọc thật từng biến dưới đây.
+      EVIDENTLY_MIN_SAMPLES: "100"
+      EVIDENTLY_DEFAULT_WINDOW: "100"
+      EVIDENTLY_DRIFT_SHARE: "0.5"
+      EVIDENTLY_KEEP_REPORTS: "20"
+    volumes:
+      # reference và report nằm trên volume → còn nguyên khi container restart/recreate
+      - evidently_reference:/app/reference
+      - evidently_reports:/app/reports
+    restart: unless-stopped
+
+volumes:
+  evidently_reference:
+  evidently_reports:

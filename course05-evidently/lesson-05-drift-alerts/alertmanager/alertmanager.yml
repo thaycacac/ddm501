@@ -1,0 +1,53 @@
+# Bài 05 — Alertmanager cho alert drift (= tutorial07/config/alertmanager/alertmanager.yml)
+# Là TEMPLATE: __TELEGRAM_CHAT_ID__ được sed thay lúc khởi động (alertmanager-course bài 04).
+
+templates:
+  - /etc/alertmanager/templates/*.tmpl
+
+route:
+  # Root receiver = "blackhole": alert KHÔNG khớp route con nào thì bị nuốt.
+  # Ở đây đó là các alert của file gốc tutorial07 (không có label source=course) — vẫn thấy trên
+  # Prometheus /alerts và Alertmanager UI, nhưng không spam Telegram.
+  receiver: blackhole
+  group_by: [severity, component]
+  group_wait: 10s
+  group_interval: 30s
+  repeat_interval: 30m
+  routes:
+    - receiver: telegram
+      matchers:
+        - source="course"
+      routes:
+        - receiver: telegram
+          matchers:
+            - severity="critical"
+          repeat_interval: 10m
+
+inhibit_rules:
+  # Service chết → mọi alert khác của Evidently là hệ quả (gauge cũ/mất), chỉ báo cái gốc.
+  - source_matchers:
+      - alertname="EvidentlyServiceDown"
+    target_matchers:
+      - component="evidently"
+      - alertname!="EvidentlyServiceDown"
+    equal: [component]
+  # Drift critical đang cháy → không cần thêm các alert drift mức warning.
+  # Có thêm `type` trong equal: HighDriftScore (drift) KHÔNG che HighMissingValues (data_quality).
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
+    equal: [component, type]
+
+receivers:
+  # Receiver không có cấu hình gửi nào = bỏ đi.
+  - name: blackhole
+  - name: telegram
+    telegram_configs:
+      - bot_token_file: /etc/alertmanager/secrets/telegram_bot_token
+        chat_id: __TELEGRAM_CHAT_ID__
+        send_resolved: true
+        parse_mode: HTML
+        message: '{{ template "telegram.course.message" . }}'
+    webhook_configs:
+      - url: http://webhook-echo:5001/telegram-copy

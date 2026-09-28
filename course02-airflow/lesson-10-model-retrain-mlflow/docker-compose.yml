@@ -1,0 +1,131 @@
+# =============================================================================
+# BÀI 10 — Airflow (bài 08) + API model, nối vào stack MLflow của course01 bài 16
+#           (= tutorial07: airflow-*, api, và việc Airflow dùng CHUNG Postgres với MLflow)
+#
+# Stack MLflow phải chạy TRƯỚC (nó sở hữu Postgres, MinIO, MLflow và mạng mlflow-course-16-net):
+#   cd ../../course01-mlflow/lesson-16-docker-mlflow-stack && docker compose up -d --build
+#
+# Rồi ở thư mục này:
+#   docker compose --env-file ../../course04-alertmanager/.env up -d --build
+#
+#   Airflow  http://127.0.0.1:28080   admin / admin
+#   API      http://127.0.0.1:28000/docs
+#   MLflow   http://127.0.0.1:5001    (của course01 bài 16)
+#   MinIO    http://127.0.0.1:29001   minio / minio123
+# Tắt stack bài 09 (28080, 29090) và mọi stack đang giữ port 28000.
+# =============================================================================
+
+name: airflow-course-10
+
+x-airflow-common: &airflow-common
+  build:
+    context: ./airflow
+  image: airflow-course-mlops:2.8.4
+  user: "${AIRFLOW_UID:-50000}:0"
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    # "postgres" = container Postgres của course01 bài 16 (tên service trong mạng chung).
+    # Giống tutorial07: một Postgres, database "mlflow" cho MLflow, database "airflow" cho Airflow.
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://mlflow:mlflow@postgres:5432/airflow
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+    AIRFLOW__WEBSERVER__BASE_URL: http://localhost:28080
+    AIRFLOW__WEBSERVER__SECRET_KEY: local-dev-secret-change-me
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL: "30"
+    # scripts/training.py import được bằng `from training import ...` (= tutorial07)
+    PYTHONPATH: /opt/airflow/scripts
+    # --- endpoint nhìn từ TRONG mạng docker ---
+    API_URL: http://api:8000
+    MLFLOW_TRACKING_URI: http://mlflow:5000
+    # Link bấm được trong Telegram (nhìn từ máy bạn)
+    MLFLOW_PUBLIC_URL: http://localhost:5001
+    # Artifact upload thẳng lên MinIO (chế độ direct của bài 16) → client cần endpoint + key
+    MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+    AWS_ACCESS_KEY_ID: minio
+    AWS_SECRET_ACCESS_KEY: minio123
+    MODEL_NAME: wine_quality_model
+    EXPERIMENT_NAME: airflow-course-10
+    RETRAIN_MIN_ACCURACY: "0.8"
+    TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./scripts:/opt/airflow/scripts:ro
+    - ./logs:/opt/airflow/logs
+    - ../lesson-08-local-executor-postgres/airflow/init_airflow.sh:/opt/airflow/init_airflow.sh:ro
+  networks: [mlflow_net]
+
+services:
+  # Không có service postgres: dùng Postgres của stack MLflow. Compose KHÔNG depends_on được service
+  # của project khác → nếu stack MLflow chưa chạy, init không nối được Postgres và thoát mã khác 0.
+  airflow-init:
+    <<: *airflow-common
+    container_name: airflow-course-10-airflow-init
+    entrypoint: /bin/bash
+    command: /opt/airflow/init_airflow.sh
+    environment:
+      <<: *airflow-common-env
+      AIRFLOW_ADMIN_USER: admin
+      AIRFLOW_ADMIN_PASSWORD: admin
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: mlflow
+      POSTGRES_PASSWORD: mlflow
+      POSTGRES_DB: mlflow
+      AIRFLOW_DB_NAME: airflow
+    restart: "no"
+
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: airflow-course-10-airflow-webserver
+    command: webserver
+    ports:
+      - "28080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: airflow-course-10-airflow-scheduler
+    command: scheduler
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  api:
+    build: ./api
+    image: airflow-course-10-api:1.0
+    container_name: airflow-course-10-api
+    ports:
+      - "28000:8000"
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MODEL_NAME: wine_quality_model
+      MODEL_STAGE: Production       # = tutorial07; đặt MODEL_ALIAS: champion để load theo alias
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: minio
+      AWS_SECRET_ACCESS_KEY: minio123
+    networks: [mlflow_net]
+    restart: unless-stopped
+
+# external: mạng do project KHÁC tạo (course01 bài 16). Compose chỉ nối vào, không tạo, không xóa khi down.
+# Mọi container trên cùng mạng gọi nhau bằng tên service: postgres, minio, mlflow, api, airflow-*.
+networks:
+  mlflow_net:
+    external: true
+    name: mlflow-course-16-net

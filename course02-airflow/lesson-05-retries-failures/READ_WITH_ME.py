@@ -41,5 +41,14 @@ File:
   dags/quarantine_pipeline.py
   scripts/corrupt_source.py    làm hỏng 15% dòng (--repair để khôi phục) = corrupt_extract.py
   scripts/show_rejected.py     in các dòng bị cách ly của một ngày
+
+TỔNG KẾT
+  - Lỗi tạm thời → retry (retries, retry_delay, retry_exponential_backoff trong default_args);
+    lỗi vĩnh viễn → raise AirflowFailException để fail ngay, không phí lượt retry.
+  - ti.try_number cho biết lần thử thứ mấy; mỗi lần thử có log riêng trong Grid.
+  - Quarantine: dòng xấu vào rejected.parquet, dòng sạch đi tiếp; luôn ghi báo cáo validation
+    kể cả khi sắp fail để có bằng chứng.
+  - Chỉ fail cả run khi tỉ lệ xấu vượt ngưỡng; task sau thành upstream_failed → không sinh
+    output sai.
 """
 print(__doc__)

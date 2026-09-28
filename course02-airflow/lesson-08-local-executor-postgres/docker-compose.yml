@@ -1,0 +1,123 @@
+# =============================================================================
+# BÀI 08 — Airflow kiểu production: Postgres + LocalExecutor + 3 service tách riêng
+#           (= tutorial07/docker-compose.yml: x-airflow-common, postgres, airflow-init,
+#              airflow-webserver, airflow-scheduler)
+# Tắt stack bài 07 trước (cùng port 28080).
+# =============================================================================
+#
+#   docker compose up -d
+#   → http://127.0.0.1:28080  admin / admin
+#
+#   Đổi số task chạy song song tối đa (mặc định 32):
+#   AIRFLOW_PARALLELISM=2 docker compose up -d
+# =============================================================================
+
+name: airflow-course-08
+
+# ---------------------------------------------------------------------------
+# YAML ANCHOR: "x-..." là khóa mở rộng, compose bỏ qua, chỉ dùng làm KHUÔN.
+#   &airflow-common      đặt tên cho khối này
+#   <<: *airflow-common  dán toàn bộ khối vào service (merge key)
+# Nhờ vậy webserver / scheduler / init dùng CHUNG image, env, volume — sửa một chỗ.
+# ---------------------------------------------------------------------------
+x-airflow-common: &airflow-common
+  image: airflow-course:2.8.4      # tutorial07: build từ ./airflow (thêm mlflow-skinny, sklearn...)
+  user: "${AIRFLOW_UID:-50000}:0"
+  environment: &airflow-common-env
+    # SQLite chỉ chạy được với SequentialExecutor (1 task một lúc). Muốn song song → Postgres/MySQL.
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    # Driver psycopg2 + user/pass/host(tên service)/database "airflow" (init tạo ra)
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://mlflow:mlflow@postgres:5432/airflow
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    # tutorial07 để false: DAG mới xuất hiện là CHẠY THEO LỊCH ngay, không cần unpause tay
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+    # Tổng số task chạy cùng lúc trên toàn Airflow (LocalExecutor = số tiến trình con tối đa)
+    AIRFLOW__CORE__PARALLELISM: ${AIRFLOW_PARALLELISM:-32}
+    AIRFLOW__WEBSERVER__BASE_URL: http://localhost:28080
+    # PHẢI giống nhau ở webserver và scheduler: webserver ký request lấy log bằng key này
+    AIRFLOW__WEBSERVER__SECRET_KEY: local-dev-secret-change-me
+    # Scheduler mở /health ở port 8974 → healthcheck của service scheduler dùng
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL: "30"
+  volumes:
+    - ./dags:/opt/airflow/dags
+    # Log task do SCHEDULER ghi (task chạy trong container scheduler), WEBSERVER đọc để hiển thị
+    # → hai container phải thấy CHUNG thư mục log. tutorial07 dùng named volume airflow_logs.
+    - ./logs:/opt/airflow/logs
+    # tutorial07 COPY script này vào image; bài học mount để sửa không cần build
+    - ./airflow/init_airflow.sh:/opt/airflow/init_airflow.sh:ro
+
+services:
+  # tutorial07 dùng CHUNG một Postgres cho MLflow (database mlflow) và Airflow (database airflow)
+  postgres:
+    image: postgres:13
+    container_name: airflow-course-08-postgres
+    environment:
+      POSTGRES_USER: mlflow
+      POSTGRES_PASSWORD: mlflow
+      POSTGRES_DB: mlflow           # chỉ tạo database "mlflow"; "airflow" do airflow-init tạo
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "mlflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Chạy MỘT LẦN rồi thoát (exit 0): tạo database, migrate schema, tạo user admin.
+  airflow-init:
+    <<: *airflow-common
+    container_name: airflow-course-08-airflow-init
+    # Bỏ entrypoint của image, chạy thẳng script bằng bash
+    entrypoint: /bin/bash
+    command: /opt/airflow/init_airflow.sh
+    environment:
+      # Merge env chung rồi thêm biến riêng. Viết "environment:" mà không merge thì MẤT hết env chung.
+      <<: *airflow-common-env
+      AIRFLOW_ADMIN_USER: admin
+      AIRFLOW_ADMIN_PASSWORD: admin
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: mlflow
+      POSTGRES_PASSWORD: mlflow
+      POSTGRES_DB: mlflow
+      AIRFLOW_DB_NAME: airflow
+    depends_on:
+      postgres:
+        condition: service_healthy   # chờ pg_isready OK, không chỉ chờ container start
+    restart: "no"                    # job một lần: thoát là xong, không khởi động lại
+
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: airflow-course-08-airflow-webserver
+    command: webserver               # chỉ UI + REST API; KHÔNG chạy task
+    ports:
+      - "28080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully   # init thoát với mã 0 mới start
+    restart: unless-stopped
+
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: airflow-course-08-airflow-scheduler
+    # Lên lịch + LocalExecutor: mỗi task chạy thành một TIẾN TRÌNH CON trong chính container này
+    command: scheduler
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

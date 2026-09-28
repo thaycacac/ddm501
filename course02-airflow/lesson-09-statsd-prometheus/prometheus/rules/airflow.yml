@@ -1,0 +1,111 @@
+# =============================================================================
+# BÀI 09 — Rule cho metric Airflow. Hai nhóm chạy song song để so trên trang /alerts:
+#   tutorial07_airflow_alerts  chép NGUYÊN từ tutorial07/config/grafana/alerts.yml (nhóm airflow_alerts),
+#                              chỉ thêm label source để phân biệt
+#   course_airflow_alerts      bản sửa + rule còn thiếu
+# =============================================================================
+groups:
+  - name: tutorial07_airflow_alerts
+    interval: 2m
+    rules:
+      # Chạy được, nhưng: (1) ngưỡng > 3 lần/giờ + for 5m → fail 1–3 lần không ai biết;
+      # (2) lần fail ĐẦU TIÊN của mỗi dag_id kể từ khi exporter khởi động không bao giờ được đếm
+      #     (xem giải thích ở rule AirflowDagRunFailed bên dưới); (3) $value của increase() là số
+      #     ngoại suy, có thể lẻ (vd 4.29 lần).
+      - alert: AirflowDAGFailed
+        expr: |
+          increase(airflow_dagrun_duration_failed_seconds_count[1h]) > 3
+        for: 5m
+        labels:
+          severity: warning
+          component: airflow
+          source: tutorial07
+        annotations:
+          summary: "Airflow DAG failures"
+          description: "{{ $labels.dag_id }} has failed {{ $value }} times in the last hour"
+
+      # HỎNG: metric airflow_task_instance_duration_seconds KHÔNG TỒN TẠI (mapping không tạo ra nó,
+      # Airflow cũng không bắn). Query rỗng → rule không bao giờ fire. Hơn nữa StatsD chỉ bắn thời
+      # gian task SAU KHI task xong → không có metric nào đo được task "đang chạy quá lâu".
+      - alert: AirflowTaskStuck
+        expr: |
+          airflow_task_instance_duration_seconds > 3600
+        for: 10m
+        labels:
+          severity: warning
+          component: airflow
+          source: tutorial07
+        annotations:
+          summary: "Airflow task stuck"
+          description: "Task {{ $labels.task_id }} has been running for over 1 hour"
+
+  - name: course_airflow_alerts
+    rules:
+      # increase() cần ÍT NHẤT 2 mẫu của cùng series. Lần fail đầu tiên của một dag_id TẠO RA series
+      # với giá trị 1 → chưa có mẫu trước đó để so → increase = 0 → bỏ sót.
+      # Vế sau "or (X unless X offset 10m)": series MỚI xuất hiện trong 10 phút qua (10 phút trước
+      # chưa có) → lấy luôn giá trị của nó (>= 1).
+      - alert: AirflowDagRunFailed
+        expr: |
+          sum by (dag_id) (increase(airflow_dagrun_duration_failed_seconds_count[10m])) > 0
+          or
+          sum by (dag_id) (airflow_dagrun_duration_failed_seconds_count unless airflow_dagrun_duration_failed_seconds_count offset 10m)
+        labels:
+          severity: warning
+          component: airflow
+          source: course
+        annotations:
+          summary: "DAG {{ $labels.dag_id }} có run thất bại"
+          description: "Khoảng {{ $value | printf \"%.0f\" }} run failed trong 10 phút qua"
+
+      # Scheduler chết: exporter vẫn sống và vẫn trả giá trị counter CŨ → up{job="airflow"} vẫn = 1.
+      # Phải nhìn vào việc counter NGỪNG TĂNG. absent(): chưa từng có heartbeat nào (exporter mới restart).
+      - alert: AirflowSchedulerHeartbeatStopped
+        expr: |
+          rate(airflow_scheduler_heartbeat_total[1m]) == 0
+          or
+          absent(airflow_scheduler_heartbeat_total)
+        for: 1m
+        labels:
+          severity: critical
+          component: airflow
+          source: course
+        annotations:
+          summary: "Scheduler Airflow ngừng heartbeat"
+          description: "Không DAG nào được lên lịch / chạy trong lúc này"
+
+      - alert: AirflowDagImportErrors
+        expr: airflow_dag_import_errors > 0
+        labels:
+          severity: warning
+          component: airflow
+          source: course
+        annotations:
+          summary: "{{ $value }} file DAG lỗi import"
+          description: "Xem banner Broken DAG trên UI Airflow"
+
+      # up = Prometheus scrape được EXPORTER, không nói gì về Airflow. Vẫn cần: exporter chết thì
+      # mọi rule ở trên mất dữ liệu.
+      - alert: AirflowMetricsExporterDown
+        expr: up{job="airflow"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: airflow
+          source: course
+        annotations:
+          summary: "statsd-exporter không scrape được"
+          description: "Mất toàn bộ metric Airflow"
+
+      # Thay cho AirflowTaskStuck: StatsD không đo được task đang chạy → chặn ở phía Airflow bằng
+      # execution_timeout (task quá giờ bị kill → failed → rơi vào AirflowDagRunFailed + callback bài 07).
+      # Rule này chỉ là tín hiệu phụ: executor có task chạy liên tục suốt 30 phút.
+      - alert: AirflowExecutorBusyLong
+        expr: min_over_time(airflow_executor_running_tasks[30m]) > 0
+        labels:
+          severity: info
+          component: airflow
+          source: course
+        annotations:
+          summary: "Executor có task chạy liên tục 30 phút"
+          description: "Có thể có task treo; kiểm tra execution_timeout"

@@ -1,0 +1,10 @@
+# BÀI 10 — API phục vụ model. Ghim hết để pip không backtrack lâu (bài học từ evidently-course bài 04).
+# scikit-learn / numpy / python 3.11 PHẢI khớp image Airflow (nơi train + pickle model).
+fastapi==0.115.6
+uvicorn==0.34.0
+mlflow-skinny==2.19.0
+scikit-learn==1.5.2
+numpy==1.26.4
+pandas==2.1.4
+boto3==1.37.14
+prometheus-client==0.21.1

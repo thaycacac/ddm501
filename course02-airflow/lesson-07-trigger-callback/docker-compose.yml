@@ -1,0 +1,51 @@
+# =============================================================================
+# BÀI 07 — như bài 06 + biến Telegram + BASE_URL (để link log trong tin nhắn bấm được)
+# Tắt stack bài 06 trước (cùng port 28080).
+# =============================================================================
+#
+#   docker compose --env-file ../../course04-alertmanager/.env up -d
+#   → http://127.0.0.1:28080  admin / admin
+#
+# --env-file: lấy TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID đã tạo ở khóa Alertmanager (không copy
+# secret sang chỗ khác). Thiếu 2 biến này DAG vẫn chạy, util Telegram chỉ log cảnh báo rồi bỏ qua.
+# =============================================================================
+
+name: airflow-course-07
+
+services:
+  airflow:
+    image: airflow-course:2.8.4
+    container_name: airflow-course-07-airflow
+    command: standalone
+    ports:
+      - "28080:8080"
+    environment:
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: sqlite:////opt/airflow/airflow.db
+      AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL: "30"
+      # ti.log_url dựng từ BASE_URL. Mặc định là localhost:8080 (port TRONG container) → link
+      # trong Telegram mở trên máy sẽ sai port. tutorial07 cũng đặt biến này.
+      AIRFLOW__WEBSERVER__BASE_URL: http://localhost:28080
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: admin
+      # Giống tutorial07: secret đi vào container qua biến môi trường, giá trị nằm trong .env (gitignore)
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      RETRAIN_MIN_ACCURACY: "0.8"
+    user: "${AIRFLOW_UID:-50000}:0"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./data:/opt/airflow/data
+      - ./logs:/opt/airflow/logs
+      - ./scripts:/opt/airflow/scripts:ro
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+    restart: unless-stopped

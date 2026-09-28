@@ -1,0 +1,14 @@
+# Cùng phiên bản với tutorial07/evidently/requirements.txt để kết quả giống hệt
+evidently==0.4.26
+pandas==2.0.3
+numpy==1.24.3
+scikit-learn==1.3.2
+# bài 01 tự tính kiểm định bằng scipy (cùng bản với tutorial07/simulations)
+scipy==1.11.4
+
+# bài 04: Evidently thành service
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+prometheus-client==0.19.0
+httpx==0.25.2

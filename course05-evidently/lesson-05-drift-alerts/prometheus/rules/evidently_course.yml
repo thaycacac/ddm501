@@ -1,0 +1,112 @@
+# =============================================================================
+# Alert drift ĐÃ SỬA — đối chiếu với file gốc tutorial07/config/prometheus/evidently_alerts.yml
+# (file gốc cũng được nạp song song, group tên evidently_*_alerts; alert của nó không có
+#  label source=course nên Alertmanager đưa vào receiver "blackhole" — chỉ xem trên /alerts).
+#
+# `for:` rút ngắn (1m, 30s) để kịp thấy trong buổi học. Giá trị tutorial07 ghi trong comment.
+# Lưu ý chung: gauge Evidently chỉ đổi mỗi lần /analyze. Nếu phân tích 1 giờ/lần thì `for: 5m`
+# chỉ là độ trễ, không phải "5 phút liên tục quan sát thấy drift".
+# =============================================================================
+groups:
+  # ---------------------------------------------------------------- DRIFT
+  - name: evidently_course_drift
+    rules:
+      - alert: DataDriftDetected
+        expr: evidently_data_drift_detected == 1
+        for: 1m                                   # tutorial07: 5m
+        labels: {severity: warning, component: evidently, type: drift, source: course}
+        annotations:
+          summary: "Dataset drift ở lần phân tích gần nhất"
+          # SỬA: gốc viết "detected for {{ $value }} consecutive checks" — $value ở đây luôn là 1
+          # (giá trị của biểu thức), không phải số lần. Muốn in số khác thì dùng hàm query.
+          description: >-
+            Tỷ lệ feature drift:
+            {{ with query "evidently_drift_score" }}{{ . | first | value | humanizePercentage }}{{ end }}.
+            Xem report mới nhất ở http://127.0.0.1:28101/reports
+          dashboard: "http://127.0.0.1:23000/d/evidently-course"
+
+      # Gốc giống hệt, nhưng với service tutorial07 evidently_drifted_features_count LUÔN 0
+      # (lỗi đọc as_dict ở bài 02) → alert này không bao giờ bắn. Service bài 04 sửa ở phía metric.
+      - alert: MultipleDriftedFeatures
+        expr: evidently_drifted_features_count >= 3
+        for: 1m                                   # tutorial07: 10m
+        labels: {severity: critical, component: evidently, type: drift, source: course}
+        annotations:
+          summary: "{{ $value }} feature đang drift"
+          description: "Từ 3 feature trở lên lệch phân phối so với reference."
+          dashboard: "http://127.0.0.1:23000/d/evidently-course"
+
+      - alert: HighDriftScore
+        expr: evidently_drift_score > 0.5
+        for: 1m                                   # tutorial07: 15m
+        labels: {severity: critical, component: evidently, type: drift, source: course}
+        annotations:
+          summary: "Tỷ lệ feature drift {{ $value | humanizePercentage }}"
+          description: "Hơn một nửa số feature drift."
+
+      # Gốc giống hệt, nhưng tutorial07 ép drift_score = 0 khi dataset_drift=False, tức score
+      # chỉ khác 0 khi share >= 0.5 → khoảng (0.2, 0.5] không bao giờ xảy ra → không bao giờ bắn.
+      - alert: ModerateDriftScore
+        expr: evidently_drift_score > 0.2 and evidently_drift_score <= 0.5
+        for: 1m                                   # tutorial07: 20m
+        labels: {severity: warning, component: evidently, type: drift, source: course}
+        annotations:
+          summary: "Tỷ lệ feature drift {{ $value | humanizePercentage }} (mức theo dõi)"
+          description: "Một phần feature drift, chưa tới ngưỡng dataset drift."
+
+  # ---------------------------------------------------------------- CHẤT LƯỢNG DỮ LIỆU
+  - name: evidently_course_quality
+    rules:
+      # Gốc giống hệt, nhưng service tutorial07 không bao giờ set gauge missing → không có series.
+      - alert: HighMissingValues
+        expr: evidently_missing_values_ratio > 0.2
+        for: 1m                                   # tutorial07: 5m
+        labels: {severity: warning, component: evidently, type: data_quality, source: course}
+        annotations:
+          summary: "{{ $labels.feature_name }} thiếu {{ $value | humanizePercentage }}"
+          description: "Kiểm tra client gửi dữ liệu / bước parse feature."
+
+      # SỬA: gốc là `A > 0.3 and count(B > 0.1) >= 2`.
+      # `and` so khớp theo TOÀN BỘ label: vế trái có {job, instance, service}, vế phải là kết quả
+      # count() — không còn label nào → không cặp nào khớp → kết quả luôn rỗng → không bao giờ bắn.
+      # `and on()` = so khớp trên tập label rỗng → vế phải có dữ liệu là đủ.
+      - alert: CriticalDataCondition
+        expr: evidently_drift_score > 0.3 and on() count(evidently_missing_values_ratio > 0.1) >= 2
+        for: 1m                                   # tutorial07: 10m
+        labels: {severity: critical, component: evidently, type: composite, source: course}
+        annotations:
+          summary: "Drift VÀ thiếu dữ liệu cùng lúc"
+          description: "Tỷ lệ drift {{ $value | humanizePercentage }} và >= 2 feature thiếu > 10%."
+
+  # ---------------------------------------------------------------- SERVICE & LỊCH PHÂN TÍCH
+  - name: evidently_course_availability
+    rules:
+      - alert: EvidentlyServiceDown
+        expr: up{job="evidently"} == 0
+        for: 30s                                  # tutorial07: 2m
+        labels: {severity: critical, component: evidently, type: availability, source: course}
+        annotations:
+          summary: "Không scrape được Evidently service"
+          runbook: "docker compose ps evidently ; docker compose logs evidently"
+
+      # THAY cho NoRecentAnalysis của gốc: `time() - (evidently_analysis_total * 0 + time()) > 3600`
+      # = time() - time() = 0 → luôn false. Đo "bao lâu rồi chưa phân tích" cần MỘT thời điểm được
+      # ghi lại → gauge evidently_last_analysis_timestamp_seconds (service bài 04 thêm vào).
+      # Gauge = 0 (vừa restart, chưa phân tích lần nào) → time() - 0 rất lớn → cũng bắn: đúng ý.
+      - alert: DriftAnalysisStale
+        expr: time() - evidently_last_analysis_timestamp_seconds > 120    # production: 2 × chu kỳ DAG
+        for: 30s
+        labels: {severity: warning, component: evidently, type: availability, source: course}
+        annotations:
+          summary: "Đã {{ $value | humanizeDuration }} chưa có lần phân tích drift nào"
+          description: "Gauge drift đang là số CŨ. Kiểm tra DAG drift_monitoring / người gọi /analyze."
+
+      # THAY cho LowAnalysisRate của gốc: `rate(evidently_analysis_total[15m]) * 3600 < 0.5`.
+      # Phân tích 1 lần/giờ → 3/4 số cửa sổ 15 phút không có lần nào → rate = 0 → bắn gần như
+      # thường trực (báo động giả). Lỗi thật mà nó muốn bắt đã có DriftAnalysisStale lo.
+      - alert: DriftAnalysisErrors
+        expr: increase(evidently_analysis_errors_total[10m]) > 0
+        labels: {severity: warning, component: evidently, type: availability, source: course}
+        annotations:
+          summary: "/analyze lỗi {{ $value | printf \"%.0f\" }} lần trong 10 phút"
+          runbook: "docker compose logs evidently | grep -i error"
