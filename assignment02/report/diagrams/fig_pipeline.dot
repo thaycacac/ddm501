@@ -1,0 +1,52 @@
+digraph pipeline {
+    graph [rankdir=TB, fontname="Helvetica", fontsize=13, nodesep=0.2, ranksep=0.2, pad=0.06, newrank=true];
+    node  [fontname="Helvetica", fontsize=13, shape=box, style="rounded,filled", fillcolor="#e3f2fd", color="#1565c0", penwidth=1.3, margin="0.08,0.035", height=0.3];
+    edge  [fontname="Helvetica", fontsize=11.5, color="#455a64", arrowsize=0.7];
+
+    subgraph cluster_train {
+        label=<<b>Training DAG</b> (one Airflow task per stage)>; labeljust=l;
+        style="rounded,dashed"; color="#90a4ae"; fontsize=12.5;
+
+        s1 [label=<<b>1 Ingest</b> <font point-size="11.5">SHA-256 pin</font><br/><font point-size="11" color="#c62828">✗ DataIntegrityError</font>>];
+        s2 [label=<<b>2 Validate</b> <font point-size="11.5">schema, missing, churn rate</font><br/><font point-size="11" color="#c62828">✗ DataValidationError (no retry)</font>>];
+        s3 [label=<<b>3 Preprocess</b> <font point-size="11.5">60/20/20 split</font>>];
+        s4 [label=<<b>4 Features</b> <font point-size="11.5">7 derived, no gender</font>>];
+        s5 [label=<<b>5 Train</b> <font point-size="11.5">16 configs, 5-fold CV</font>>];
+        s6 [label=<<b>6 Evaluate</b> <font point-size="11.5">runs table, charts</font>>];
+        s7 [label=<<b>7 Register</b> <font point-size="11.5">gates → @challenger</font><br/><font point-size="11" color="#c62828">✗ QualityGateError (champion kept)</font>>];
+    }
+
+    raw   [label="raw CSV", shape=cylinder, fillcolor="#fff8e1", color="#f9a825", fontsize=11.5];
+    split [label="splits + hashes", shape=cylinder, fillcolor="#fff8e1", color="#f9a825", fontsize=11.5];
+    proc  [label="features + metadata", shape=cylinder, fillcolor="#fff8e1", color="#f9a825", fontsize=11.5];
+    mlf   [label=<<b>MLflow tracking</b><br/><font point-size="11.5">params, metrics, model</font>>, shape=cylinder, fillcolor="#e8f5e9", color="#2e7d32"];
+    csv   [label="experiments.csv", shape=note, fillcolor="#f3e5f5", color="#6a1b9a", fontsize=11.5];
+    reg   [label=<<b>Model Registry</b><br/><font point-size="11.5">aliases + version tags</font>>, shape=cylinder, fillcolor="#e8f5e9", color="#2e7d32"];
+    human [label=<<b>8 Deploy</b> <font point-size="11.5">(human gate)</font><br/><font point-size="11.5">make promote → @champion</font>>, fillcolor="#fff3e0", color="#ef6c00"];
+    serve [label=<<b>Serving</b> <font point-size="11.5">(design-only)</font><br/><font point-size="11.5">loads @champion</font>>, style="rounded,filled,dashed", fillcolor="#fafafa", color="#78909c"];
+    mon   [label=<<b>Drift DAG</b><br/><font point-size="11.5">PSI &gt; 0.2 → retrain</font>>, fillcolor="#fafafa", color="#78909c"];
+
+    s1 -> s2 -> s3 -> s4 -> s5 -> s6 -> s7 [weight=10];
+    raw -> s1 [style=dashed];
+    s3 -> split [style=dashed];
+    split -> s4 [style=dashed];
+    s4 -> proc [style=dashed];
+    proc -> s5 [style=dashed];
+    s5 -> mlf [label="log", color="#2e7d32"];
+    mlf -> s6 [color="#2e7d32"];
+    s6 -> csv [style=dashed];
+    csv -> s7 [style=dashed];
+    s7 -> reg [label="version", color="#2e7d32"];
+    reg -> human [label="@challenger"];
+    human -> reg [color="#ef6c00"];
+    reg -> serve [style=dashed];
+    mon -> s1 [style=dashed, color="#2e7d32", constraint=false];
+
+    {rank=same; s1; raw;}
+    {rank=same; s3; split;}
+    {rank=same; s4; proc;}
+    {rank=same; s5; mlf;}
+    {rank=same; s6; csv;}
+    {rank=same; s7; reg;}
+    {rank=same; mon; human; serve;}
+}

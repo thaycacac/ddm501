@@ -1,0 +1,15 @@
+{
+  "protocol": "5-fold stratified CV, out-of-fold predictions, gender excluded, seed 42",
+  "results": {
+    "logistic_regression": {
+      "roc_auc": 0.845,
+      "pr_auc": 0.6541,
+      "recall_at_top20": 0.5078
+    },
+    "hist_gradient_boosting": {
+      "roc_auc": 0.844,
+      "pr_auc": 0.6562,
+      "recall_at_top20": 0.5083
+    }
+  }
+}

@@ -1,0 +1,56 @@
+digraph dataflow {
+    graph [rankdir=TB, fontname="Helvetica", fontsize=11.5, nodesep=0.25, ranksep=0.38, newrank=true, pad=0.15];
+    node  [fontname="Helvetica", fontsize=10.5, shape=note, style="filled", fillcolor="#eef4fb", color="#2f5d8a", margin="0.08,0.04", width=1.8];
+    edge  [fontname="Helvetica", fontsize=9, color="#455a64", arrowsize=0.7, fontcolor="#6a1b9a"];
+
+    subgraph cluster_off {
+        label=<<b>A · Offline training</b><br/>monthly / drift alert>; style="rounded,filled"; fillcolor="#fafafa"; color="#9e9e9e";
+        a1 [label="Raw extracts\n(PII present)"];
+        a2 [label="Validated snapshot\nParquet + hash"];
+        a3 [label="Training set\nfeatures + label"];
+        a4 [label="train / val / test\n70 / 15 / 15"];
+        a5 [label="Candidate model\n+ metrics"];
+        a6 [label="MLflow registry\n@challenger", shape=cylinder, fillcolor="#fffde7", color="#9e9d24"];
+        a1 -> a2 [label=" pseudonymise id"];
+        a2 -> a3 [label=" join 12-m label"];
+        a3 -> a4 [label=" stratified, seed 42"];
+        a4 -> a5 [label=" fit + log run"];
+        a5 -> a6 [label=" gates pass"];
+    }
+    subgraph cluster_batch {
+        label=<<b>C · Weekly batch</b><br/>Monday 02:00>; style="rounded,filled"; fillcolor="#fafafa"; color="#9e9e9e";
+        b1 [label="Active customers\n≈ 400k rows"];
+        b2 [label="Feature matrix"];
+        b3 [label="Probability +\ntop-3 reasons"];
+        b4 [label="churn_scores\n(CRM DB)", shape=cylinder, fillcolor="#fffde7", color="#9e9d24"];
+        b1 -> b2 [label=" fitted\n preprocessor"];
+        b2 -> b3 [label=" @champion"];
+        b3 -> b4 [label=" rank, decile,\n top-20% flag"];
+    }
+    subgraph cluster_on {
+        label=<<b>D · Online scoring</b><br/>on demand (CRM screen)>; style="rounded,filled"; fillcolor="#fafafa"; color="#9e9e9e";
+        c1 [label="POST /v1/churn/score\nJSON features"];
+        c2 [label="Validated request"];
+        c3 [label="probability, band,\nreasons, version"];
+        c1 -> c2 [label=" Pydantic\n schema"];
+        c2 -> c3 [label=" in-memory\n @champion"];
+    }
+    subgraph cluster_fb {
+        label=<<b>B · Feedback</b><br/>continuous>; style="rounded,filled"; fillcolor="#fafafa"; color="#9e9e9e";
+        d1 [label="Campaign log\ncontact, offer,\noverride"];
+        d2 [label="Observed churn\nT+30/90 d, T+12 m"];
+        d3 [label="Outcome table"];
+        d4 [label="Evidently\nperformance report"];
+        d1 -> d2 [style=invis];
+        d2 -> d3;
+        d1 -> d3;
+        d3 -> d4 [label=" realised\n precision / recall"];
+    }
+    {rank=same; a1; b1; c1; d1;}
+    a1 -> b1 -> c1 -> d1 [style=invis];
+
+    a6 -> b3 [label="promote\n(approval)", style=dashed, color="#1565c0", fontcolor="#1565c0", constraint=false];
+    a6 -> c3 [label="load", style=dashed, color="#1565c0", fontcolor="#1565c0", constraint=false];
+    b4 -> d1 [label="list", color="#ad1457", fontcolor="#ad1457", constraint=false];
+    d3 -> a1 [label="new labels", style=dashed, color="#2e7d32", fontcolor="#2e7d32", constraint=false];
+}

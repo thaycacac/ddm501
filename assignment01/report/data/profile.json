@@ -1,0 +1,134 @@
+{
+  "source": "IBM Telco Customer Churn (GitHub: IBM/telco-customer-churn-on-icp4d; identical Kaggle mirror: blastchar/telco-customer-churn)",
+  "quality": {
+    "rows": 7043,
+    "columns": 21,
+    "duplicate_customer_ids": 0,
+    "blank_total_charges": 11,
+    "blank_total_charges_with_tenure_0": 11,
+    "null_cells_other_columns": 0,
+    "tenure_range": [
+      0,
+      72
+    ],
+    "monthly_charges_range": [
+      18.25,
+      118.75
+    ],
+    "monthly_charges_mean": 64.76,
+    "categorical_columns": 16,
+    "numeric_columns": 3
+  },
+  "target": {
+    "churn_rate": 0.2654,
+    "churners": 1869,
+    "churn_by_Contract": {
+      "Month-to-month": 0.4271,
+      "One year": 0.1127,
+      "Two year": 0.0283
+    },
+    "churn_by_InternetService": {
+      "DSL": 0.1896,
+      "Fiber optic": 0.4189,
+      "No": 0.074
+    },
+    "churn_by_PaymentMethod": {
+      "Bank transfer (automatic)": 0.1671,
+      "Credit card (automatic)": 0.1524,
+      "Electronic check": 0.4529,
+      "Mailed check": 0.1911
+    },
+    "churn_by_tenure_band": {
+      "0-12": 0.4744,
+      "13-24": 0.2871,
+      "25-48": 0.2039,
+      "49-72": 0.0951
+    }
+  },
+  "baselines": {
+    "top_k_fraction": 0.2,
+    "random": {
+      "roc_auc": 0.5,
+      "pr_auc": 0.2654,
+      "recall_at_top20": 0.2097,
+      "precision_at_top20": 0.2782
+    },
+    "scorecard": {
+      "roc_auc": 0.8256,
+      "pr_auc": 0.5709,
+      "recall_at_top20": 0.4757,
+      "precision_at_top20": 0.6309
+    },
+    "binary_rule_m2m_tenure_le_12": {
+      "flagged_share": 0.2831,
+      "precision": 0.5135,
+      "recall": 0.5479,
+      "f1": 0.5302
+    }
+  },
+  "business_case": {
+    "assumptions": {
+      "postpaid_subscribers": 400000,
+      "gross_margin": 0.6,
+      "offer_cost_per_contact_usd": 50.0,
+      "save_rate_contacted_churners": 0.25,
+      "contact_capacity_share_per_year": 0.2,
+      "ml_target_recall_at_top20": 0.5,
+      "platform_cost_per_year_usd": 120000.0
+    },
+    "derived": {
+      "arpu_usd_month": 64.76,
+      "churners_per_year": 106160,
+      "contacts_per_year": 80000,
+      "margin_per_saved_customer_usd": 466.27,
+      "campaign_cost_usd": 4000000,
+      "break_even_precision": 0.4289
+    },
+    "policies": {
+      "random": {
+        "recall_at_capacity": 0.2097,
+        "precision_at_capacity": 0.2783,
+        "customers_saved": 5565,
+        "retained_margin_usd": 2595008,
+        "net_usd": -1404992,
+        "roi": -0.351,
+        "churn_rate_after": 0.2515,
+        "net_vs_status_quo_usd": -2193605,
+        "saved_vs_status_quo": -4705
+      },
+      "status_quo_binary_rule": {
+        "recall_at_capacity": 0.387,
+        "precision_at_capacity": 0.5135,
+        "customers_saved": 10270,
+        "retained_margin_usd": 4788613,
+        "net_usd": 788613,
+        "roi": 0.197,
+        "churn_rate_after": 0.2397,
+        "net_vs_status_quo_usd": 0,
+        "saved_vs_status_quo": 0
+      },
+      "improved_scorecard": {
+        "recall_at_capacity": 0.4757,
+        "precision_at_capacity": 0.6313,
+        "customers_saved": 12625,
+        "retained_margin_usd": 5886720,
+        "net_usd": 1886720,
+        "roi": 0.472,
+        "churn_rate_after": 0.2338,
+        "net_vs_status_quo_usd": 1098107,
+        "saved_vs_status_quo": 2355
+      },
+      "ml_target": {
+        "recall_at_capacity": 0.5,
+        "precision_at_capacity": 0.6635,
+        "customers_saved": 13270,
+        "retained_margin_usd": 6187429,
+        "net_usd": 2187429,
+        "roi": 0.547,
+        "churn_rate_after": 0.2322,
+        "net_vs_status_quo_usd": 1398816,
+        "saved_vs_status_quo": 3000
+      }
+    }
+  }
+}

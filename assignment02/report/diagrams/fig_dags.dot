@@ -1,0 +1,36 @@
+digraph dags {
+    graph [rankdir=TB, fontname="Helvetica", fontsize=12.5, nodesep=0.16, ranksep=0.32, pad=0.06, newrank=true];
+    node  [fontname="Helvetica", fontsize=12.5, shape=box, style="rounded,filled", fillcolor="#e3f2fd", color="#1565c0", penwidth=1.3, margin="0.06,0.04", width=0.4];
+    edge  [fontname="Helvetica", fontsize=11.5, color="#455a64", arrowsize=0.7];
+
+    subgraph cluster_drift {
+        label=<<b>telco_churn_drift_monitor</b><br align="left"/>cron 0 1 * * 1 (Mon 01:00) · timeout 30 min<br align="left"/>>; labeljust=l; style="rounded,dashed"; color="#90a4ae";
+        d1 [label=<<b>drift</b><br/><font point-size="11.5">PSI per feature</font>>];
+        d2 [label=<<b>drift_detected</b><br/><font point-size="11.5">any PSI &gt; 0.2 ?</font>>];
+        d3 [label=<<b>emit_drift_alert</b><br/><font point-size="11.5">outlets=[DRIFT_ALERT]</font>>];
+    }
+    ds [label=<<b>DRIFT_ALERT</b><br/><font point-size="11.5">Airflow Dataset</font>>, shape=cylinder, fillcolor="#e8f5e9", color="#2e7d32"];
+
+    subgraph cluster_train {
+        label=<<b>telco_churn_training</b>   cron 0 2 1 * * (1st, 02:00) <font color="#2e7d32"><b>OR</b> DRIFT_ALERT event</font><br align="left"/>manual runs: params.experiments · max_active_runs=1 · catchup=False · timeout 2 h<br align="left"/>>; labeljust=l; style="rounded,dashed"; color="#90a4ae";
+        t1 [label=<<b>ingest</b>>];
+        t2 [label=<<b>validate</b>>];
+        t3 [label=<<b>preprocess</b>>];
+        t4 [label=<<b>features</b>>];
+        t5 [label=<<b>train</b>>];
+        t6 [label=<<b>evaluate</b>>];
+        t7 [label=<<b>register</b><br/><font point-size="11.5">@challenger</font>>];
+    }
+    promote [label=<<b>Human promote</b> (not a task)<br/><font point-size="11.5">make promote → @champion</font>>, fillcolor="#fff3e0", color="#ef6c00"];
+    alert [label=<<b>Alert webhook</b><br/><font point-size="11.5">on_failure / on_retry / on_success</font>>, shape=note, fillcolor="#ffebee", color="#c62828"];
+
+    {rank=same; d1; d2; d3; ds;}
+    {rank=same; t1; t2; t3; t4; t5; t6; t7;}
+    {rank=same; promote; alert;}
+
+    d1 -> d2 -> d3 -> ds;
+    ds -> t1 [color="#2e7d32", weight=0];
+    t1 -> t2 -> t3 -> t4 -> t5 -> t6 -> t7;
+    t7 -> promote [style=dashed];
+    t7 -> alert [style=dotted, color="#c62828"];
+}

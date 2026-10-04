@@ -1,0 +1,78 @@
+digraph architecture {
+    graph [rankdir=TB, fontname="Helvetica", fontsize=14, nodesep=0.16, ranksep=0.34, newrank=true, pad=0.12, splines=true];
+    node  [fontname="Helvetica", fontsize=13.5, shape=box, style="rounded,filled", fillcolor="#e3f2fd", color="#1565c0", penwidth=1.3, margin="0.06,0.035", width=1.3];
+    edge  [fontname="Helvetica", fontsize=12, color="#455a64", arrowsize=0.75];
+
+    subgraph cluster_src {
+        label=<<b>1 · Source systems (existing)</b>>; labeljust=l; style="rounded,filled"; fillcolor="#fafafa"; color="#9e9e9e";
+        bss [label="BSS / Billing DB\ncontracts, charges", shape=cylinder, fillcolor="#fffde7", color="#9e9d24"];
+        crm [label="CRM\nprofile, tickets", shape=cylinder, fillcolor="#fffde7", color="#9e9d24"];
+        usage [label="Usage / network\ndaily aggregates", shape=cylinder, fillcolor="#fffde7", color="#9e9d24"];
+    }
+    subgraph cluster_data {
+        label=<<b>2 · Data platform (DataOps)</b>>; labeljust=l; style="rounded,filled"; fillcolor="#fafafa"; color="#9e9e9e";
+        ing [label="Ingestion\n(Python tasks)"];
+        val [label="Validation\n(Pandera + rules)"];
+        lake [label="Data lake (Parquet\n+ content hash)", shape=cylinder, fillcolor="#fffde7", color="#9e9d24"];
+        feat [label="Feature table\n(PostgreSQL)", shape=cylinder, fillcolor="#fffde7", color="#9e9d24"];
+    }
+    subgraph cluster_ml {
+        label=<<b>3 · ML platform</b>>; labeljust=l; style="rounded,filled"; fillcolor="#fafafa"; color="#9e9e9e";
+        airflow [label="Apache Airflow\nDAG scheduler", shape=hexagon, fillcolor="#ede7f6", color="#5e35b1"];
+        train [label="Training + tuning\n(scikit-learn)"];
+        evalg [label="Evaluation &\nquality gates"];
+        mlflow [label="MLflow tracking +\nregistry @champion", shape=cylinder, fillcolor="#fffde7", color="#9e9d24"];
+    }
+    subgraph cluster_serve {
+        label=<<b>4 · Serving (Docker containers)</b>>; labeljust=l; style="rounded,filled"; fillcolor="#fafafa"; color="#9e9e9e";
+        batch [label="Weekly batch\nscoring job"];
+        scores [label="churn_scores\nscore + reasons", shape=cylinder, fillcolor="#fffde7", color="#9e9d24"];
+        api [label="Churn API (FastAPI)\n≥ 2 replicas"];
+    }
+    subgraph cluster_cons {
+        label=<<b>5 · Consumers</b>>; labeljust=l; style="rounded,filled"; fillcolor="#fafafa"; color="#9e9e9e";
+        camp [label="Campaign manager\ntop-20% list", fillcolor="#fce4ec", color="#ad1457"];
+        bi [label="BI dashboard\nretention KPIs", fillcolor="#fce4ec", color="#ad1457"];
+        agent [label="CRM agent screen\nrisk badge + reasons", fillcolor="#fce4ec", color="#ad1457"];
+    }
+    subgraph cluster_mon {
+        label=<<b>6 · Monitoring &amp; feedback</b>>; labeljust=l; style="rounded,filled"; fillcolor="#fafafa"; color="#9e9e9e";
+        fb [label="Outcome & label\nfeedback store", fillcolor="#e8f5e9", color="#2e7d32"];
+        evid [label="Evidently\ndrift + performance", fillcolor="#e8f5e9", color="#2e7d32"];
+        prom [label="Prometheus, Grafana\n+ Alertmanager", fillcolor="#e8f5e9", color="#2e7d32"];
+    }
+
+    {rank=same; bss; crm; usage;}
+    {rank=same; ing; val; lake; feat;}
+    {rank=same; airflow; train; evalg; mlflow;}
+    {rank=same; batch; scores; api;}
+    {rank=same; camp; bi; agent;}
+    {rank=same; fb; evid; prom;}
+
+    edge [style=invis, weight=20];
+    crm -> val; usage -> lake;
+    ing -> airflow; val -> train; lake -> evalg; feat -> mlflow;
+    train -> batch; evalg -> scores; mlflow -> api;
+    batch -> camp; scores -> bi; api -> agent;
+    camp -> fb; bi -> evid; agent -> prom;
+    edge [style=solid, weight=1];
+
+    bss -> ing; crm -> ing; usage -> ing;
+    ing -> val -> lake -> feat;
+    airflow -> train [style=dashed, color="#5e35b1"];
+    train -> evalg -> mlflow;
+    feat -> train [label="snapshot"];
+    feat -> batch;
+    mlflow -> batch [color="#1565c0", penwidth=1.5];
+    mlflow -> api [label="@champion", color="#1565c0", penwidth=1.5];
+    batch -> scores;
+    scores -> api [style=dotted, label="fallback"];
+    scores -> camp; scores -> bi;
+    api -> agent;
+    camp -> fb;
+    scores -> evid [style=dashed];
+    api -> prom [label=" /metrics"];
+    evid -> prom [label="drift\nmetrics", style=dashed];
+    evid -> airflow [xlabel="drift → retrain", color="#c62828", fontcolor="#c62828", constraint=false];
+    fb -> lake [xlabel="labels", color="#2e7d32", fontcolor="#2e7d32", style=dashed, constraint=false];
+}

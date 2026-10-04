@@ -1,0 +1,28 @@
+{
+  "action": "promote",
+  "registered_model_name": "churnguard-classifier",
+  "version": 2,
+  "alias": "champion",
+  "replaced_version": 1,
+  "run_id": "52a1b59b49c04960a7a6797df67ce7ed",
+  "model_uri": "models:/churnguard-classifier@champion",
+  "tags": {
+    "run_name": "lr_eng_costthr",
+    "val_business_cost_per_customer": "117.8287",
+    "val_recall_at_top_k": "0.516",
+    "val_roc_auc": "0.8381",
+    "val_pr_auc": "0.6499",
+    "test_recall_at_top_k": "0.5027",
+    "test_roc_auc": "0.8458",
+    "threshold": "0.51",
+    "feature_set": "engineered",
+    "data_sha256": "16320c9c1ec72448db59aa0a26a0b95401046bef5d02fd3aeb906448e3055e91",
+    "git_sha": "3523e9ba7f4608903e975de00e7399e0a1a25799",
+    "pipeline_run_id": "manual__2026-10-04T00:00:00+00:00",
+    "validation_status": "passed",
+    "approval_status": "approved",
+    "approved_by": "hoa25ms13299 (demo approval)",
+    "approved_at": "2026-10-03T19:18:12.183799+00:00",
+    "rolled_back_reason": "drill: rollback rehearsal"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "run_a": "local__20261003T191435Z",
+  "run_b": "manual__2026-10-04T00:00:00+00:00",
+  "n_runs": 16,
+  "same_run_names": true,
+  "n_metrics_compared": 39,
+  "max_abs_diff": 2.7755575615628914e-17,
+  "thresholds_identical": true,
+  "same_data_sha256": true
+}

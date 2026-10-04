@@ -1,0 +1,38 @@
+# Airflow 2.10.5 evidence (extracted from local runs on 2026-10-03T19:19Z)
+
+## make dag-check: list-import-errors
+No data found
+
+## Timetables after 'airflow dags reserialize'
+telco_churn_drift_monitor | At 01:00, only on Monday
+telco_churn_training | Triggered by datasets or At 02:00, on day 1 of the month
+
+## make airflow-test (telco_churn_training)
+task_id=ingest
+task_id=validate
+task_id=preprocess
+task_id=features
+task_id=train
+task_id=evaluate
+task_id=register
+SUCCESS {"event": "challenger_registered", "run_id": "manual__2026-10-04T00:00:00+00:00", "model_uri": "models:/churnguard-classifier@challenger", "version": 2, "run_name": "lr_eng_costthr", "champion_version": 1, "next_step": "review and run `python -m src.pipeline promote --approved-by <name>`"}
+DagRun Finished: dag_id=telco_churn_training
+state=success
+
+## make airflow-test-drift SNAPSHOT=data/simulated/drifted_snapshot.csv
+task_id=drift
+max PSI=0.8416 drifted=['MonthlyCharges']
+task_id=drift_detected
+ALERT {"event": "data_drift_detected", "run_id": "manual__2026-10-04T00:00:00+00:00", "max_psi": 0.8416, "drifted_features": ["MonthlyCharges"], "action": "telco_churn_training scheduled via dataset churnguard://monitoring/drift-alert"}
+task_id=emit_drift_alert
+
+## make airflow-test-drift (current snapshot)
+task_id=drift
+max PSI=0.0017 drifted=[]
+Skipping downstream tasks
+task_id=drift_detected
+
+## Metadata DB: dataset events and queued consumer DAG runs
+event: churnguard://monitoring/drift-alert from telco_churn_drift_monitor.emit_drift_alert at 2026-10-03 19:18:45.960435
+event: churnguard://monitoring/drift-alert from telco_churn_drift_monitor.emit_drift_alert at 2026-10-03 19:18:57.486601
+queued: telco_churn_training (dataset_id=1) at 2026-10-03 19:18:57.488155

@@ -1,0 +1,30 @@
+{
+  "threshold": 0.2,
+  "max_psi": 0.0017,
+  "drifted_features": [],
+  "drift_detected": false,
+  "psi": {
+    "tenure": 0.0017,
+    "TotalCharges": 0.001,
+    "MonthlyCharges": 0.0009,
+    "StreamingTV": 0.0003,
+    "MultipleLines": 0.0003,
+    "PhoneService": 0.0003,
+    "OnlineBackup": 0.0002,
+    "Contract": 0.0002,
+    "InternetService": 0.0001,
+    "PaperlessBilling": 0.0001,
+    "PaymentMethod": 0.0001,
+    "TechSupport": 0.0,
+    "DeviceProtection": 0.0,
+    "Dependents": 0.0,
+    "StreamingMovies": 0.0,
+    "OnlineSecurity": 0.0,
+    "SeniorCitizen": 0.0,
+    "Partner": 0.0
+  },
+  "reference": "train split",
+  "current": "data/raw/Telco-Customer-Churn.csv",
+  "n_reference": 4225,
+  "n_current": 7043
+}
