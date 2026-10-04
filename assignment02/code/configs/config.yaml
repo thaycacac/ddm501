@@ -1,0 +1,218 @@
+# Telco Customer Churn — training pipeline configuration.
+# Any key can be overridden with an environment variable named
+# TELCO__<SECTION>__<KEY> (double underscore = nesting), e.g.
+#   TELCO__MLFLOW__TRACKING_URI=http://mlflow:5000
+#   TELCO__PROJECT__SEED=7
+# Values are parsed as YAML, so numbers/booleans/lists keep their types.
+
+project:
+  name: telco-churn
+  seed: 42
+
+paths:
+  raw_data: data/raw/Telco-Customer-Churn.csv
+  interim_dir: data/interim
+  processed_dir: data/processed
+  reports_dir: reports
+  figures_dir: reports/figures
+  state_dir: reports/pipeline_state
+  # Latest customer snapshot compared against the training reference by the drift check.
+  drift_current_data: data/raw/Telco-Customer-Churn.csv
+
+data:
+  source_url: https://raw.githubusercontent.com/IBM/telco-customer-churn-on-icp4d/master/data/Telco-Customer-Churn.csv
+  # Data version pin: ingestion fails if the downloaded file does not match.
+  expected_sha256: 16320c9c1ec72448db59aa0a26a0b95401046bef5d02fd3aeb906448e3055e91
+  target: Churn
+  positive_label: "Yes"
+  id_column: customerID
+  # Fractions of the full dataset; the remainder is the training set (60/20/20).
+  val_size: 0.20
+  test_size: 0.20
+
+validation:
+  min_rows: 5000
+  max_missing_fraction: 0.01
+  churn_rate_range: [0.15, 0.40]
+  numeric_ranges:
+    tenure: [0, 120]
+    MonthlyCharges: [0, 500]
+    TotalCharges: [0, 20000]
+
+mlflow:
+  tracking_uri: sqlite:///mlflow.db
+  artifact_root: mlartifacts
+  experiment_name: churnguard-training
+  registered_model_name: churnguard-classifier
+  # The pipeline only ever moves @challenger; @champion requires a human approval
+  # (`python -m src.pipeline promote --approved-by <name>`).
+  challenger_alias: challenger
+  champion_alias: champion
+  previous_alias: previous_champion
+
+# Business assumptions (NOT measured data), identical to Assignment 1, Section 1.1.
+#   churn_loss   = 12 months x mean MonthlyCharges ($64.76) x 60% gross margin = $466.27
+#   offer_cost   = retention incentive + agent contact cost per targeted customer
+#   offer_success_rate = share of contacted true churners who are retained ("save rate")
+# cost(TP) = offer_cost + (1 - offer_success_rate) * churn_loss
+# cost(FP) = offer_cost ; cost(FN) = churn_loss ; cost(TN) = 0
+# Break-even probability = offer_cost / (offer_success_rate * churn_loss) = 0.429
+business:
+  churn_loss: 466.27
+  offer_cost: 50.0
+  offer_success_rate: 0.25
+  # Retention call-centre capacity: at most 20% of the base per cycle.
+  top_k_fraction: 0.20
+  max_contact_rate: 0.20
+
+# Retraining trigger (Assignment 1, NFR-8): PSI > 0.2 on any production feature.
+drift:
+  reference_split: train
+  psi_threshold: 0.2
+  bins: 10
+
+training:
+  cv_folds: 5
+  default_threshold: 0.5
+
+# Model selection + quality gates (applied on the validation split only).
+selection:
+  metric: val_business_cost_per_customer
+  mode: min
+  tie_breaker: val_pr_auc
+  # Lower bounds (Assignment 1, Section 3.4 minimum-acceptable values).
+  gates:
+    val_recall_at_top_k: 0.48   # must beat the rule scorecard (0.476)
+    val_roc_auc: 0.83
+    val_pr_auc: 0.60
+  # Upper bounds.
+  max_gates:
+    val_contact_rate: 0.20      # call-centre capacity
+    # Fairness guardrail |recall(F) - recall(M)| <= 0.05, tested on the one-sided 95% lower
+    # confidence bound: with ~187 churners per gender in validation the gap's standard
+    # error is ~0.05, so a point-estimate gate would accept/reject models by chance.
+    val_gender_recall_gap_lcb: 0.05
+    val_brier: 0.17
+  # Challenger must beat the baseline run on the selection metric.
+  baseline_experiment: lr_baseline
+  # "Pick the simplest model within 0.005 Recall@top-20% of the best" (Assignment 1, 5.1),
+  # expressed in $/customer: 0.005 x 374 val churners x $116.57 per FP->TP swap / 1,409.
+  simplicity_tolerance: 0.15
+  complexity_order: [logistic_regression, random_forest, lightgbm, xgboost]
+
+# Experiment matrix: each entry becomes one MLflow run.
+# feature_set: base | engineered | engineered_gender (ablation only)
+# imbalance: none | class_weight | smote
+# threshold: fixed (uses threshold_value) | cost_optimal (tuned on validation, capped by
+#            business.max_contact_rate)
+# eligible: false = measured for analysis but never registered (policy violation)
+experiments:
+  - name: lr_baseline
+    model: logistic_regression
+    feature_set: base
+    imbalance: none
+    threshold: fixed
+    threshold_value: 0.5
+    params: {C: 1.0, max_iter: 2000}
+  - name: lr_balanced
+    model: logistic_regression
+    feature_set: base
+    imbalance: class_weight
+    threshold: fixed
+    threshold_value: 0.5
+    params: {C: 1.0, max_iter: 2000}
+  - name: lr_balanced_eng
+    model: logistic_regression
+    feature_set: engineered
+    imbalance: class_weight
+    threshold: fixed
+    threshold_value: 0.5
+    params: {C: 0.5, max_iter: 2000}
+  - name: lr_smote_eng
+    model: logistic_regression
+    feature_set: engineered
+    imbalance: smote
+    threshold: fixed
+    threshold_value: 0.5
+    params: {C: 0.5, max_iter: 2000}
+  - name: lr_eng_costthr
+    model: logistic_regression
+    feature_set: engineered
+    imbalance: none
+    threshold: cost_optimal
+    params: {C: 0.5, max_iter: 2000}
+  - name: rf_default
+    model: random_forest
+    feature_set: base
+    imbalance: none
+    threshold: fixed
+    threshold_value: 0.5
+    params: {n_estimators: 300}
+  - name: rf_tuned_balanced_eng
+    model: random_forest
+    feature_set: engineered
+    imbalance: class_weight
+    threshold: fixed
+    threshold_value: 0.5
+    params: {n_estimators: 300, max_depth: 8, min_samples_leaf: 5, max_features: sqrt}
+  - name: rf_tuned_eng_costthr
+    model: random_forest
+    feature_set: engineered
+    imbalance: none
+    threshold: cost_optimal
+    params: {n_estimators: 300, max_depth: 8, min_samples_leaf: 5, max_features: sqrt}
+  - name: xgb_default_eng
+    model: xgboost
+    feature_set: engineered
+    imbalance: none
+    threshold: fixed
+    threshold_value: 0.5
+    params: {n_estimators: 300, max_depth: 6, learning_rate: 0.1}
+  - name: xgb_tuned_spw_eng
+    model: xgboost
+    feature_set: engineered
+    imbalance: class_weight
+    threshold: fixed
+    threshold_value: 0.5
+    params: {n_estimators: 400, max_depth: 3, learning_rate: 0.05, subsample: 0.8, colsample_bytree: 0.8, min_child_weight: 5}
+  - name: xgb_tuned_eng_costthr
+    model: xgboost
+    feature_set: engineered
+    imbalance: none
+    threshold: cost_optimal
+    params: {n_estimators: 400, max_depth: 3, learning_rate: 0.05, subsample: 0.8, colsample_bytree: 0.8, min_child_weight: 5}
+  - name: lgbm_balanced_eng
+    model: lightgbm
+    feature_set: engineered
+    imbalance: class_weight
+    threshold: fixed
+    threshold_value: 0.5
+    params: {n_estimators: 400, num_leaves: 15, learning_rate: 0.03, min_child_samples: 30, subsample: 0.8, subsample_freq: 1, colsample_bytree: 0.8}
+  - name: lgbm_smote_eng
+    model: lightgbm
+    feature_set: engineered
+    imbalance: smote
+    threshold: fixed
+    threshold_value: 0.5
+    params: {n_estimators: 400, num_leaves: 15, learning_rate: 0.03, min_child_samples: 30, subsample: 0.8, subsample_freq: 1, colsample_bytree: 0.8}
+  - name: lgbm_eng_costthr
+    model: lightgbm
+    feature_set: engineered
+    imbalance: none
+    threshold: cost_optimal
+    params: {n_estimators: 400, num_leaves: 15, learning_rate: 0.03, min_child_samples: 30, subsample: 0.8, subsample_freq: 1, colsample_bytree: 0.8}
+  # Ablation (Assignment 1, 5.5): accuracy cost of excluding the protected attribute.
+  - name: lr_eng_gender_costthr
+    model: logistic_regression
+    feature_set: engineered_gender
+    imbalance: none
+    threshold: cost_optimal
+    eligible: false
+    params: {C: 0.5, max_iter: 2000}
+  - name: rf_tuned_eng_gender_costthr
+    model: random_forest
+    feature_set: engineered_gender
+    imbalance: none
+    threshold: cost_optimal
+    eligible: false
+    params: {n_estimators: 300, max_depth: 8, min_samples_leaf: 5, max_features: sqrt}

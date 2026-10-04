@@ -1,0 +1,15 @@
+{
+  "passed": true,
+  "errors": [],
+  "warnings": [
+    "11 blank TotalCharges (new customers, tenure=0) -> set to 0"
+  ],
+  "stats": {
+    "n_rows": 7043,
+    "duplicate_ids": 0,
+    "missing_fraction": {
+      "TotalCharges": 0.00156
+    },
+    "churn_rate": 0.2654
+  }
+}

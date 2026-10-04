@@ -1,0 +1,17 @@
+run_name,eligible,val_recall_at_top_k>=0.48,val_roc_auc>=0.83,val_pr_auc>=0.6,val_contact_rate<=0.2,val_gender_recall_gap_lcb<=0.05,val_brier<=0.17,beats_baseline,passed
+lr_eng_costthr,True,True,True,True,True,True,True,True,True
+lr_eng_gender_costthr,False,True,True,True,True,False,True,True,False
+lr_baseline,True,True,True,True,False,True,True,False,False
+rf_tuned_eng_costthr,True,True,True,True,True,False,True,False,False
+rf_tuned_eng_gender_costthr,False,True,True,True,True,True,True,False,False
+lgbm_smote_eng,True,True,True,True,False,True,True,False,False
+xgb_tuned_eng_costthr,True,True,True,True,True,True,True,False,False
+lgbm_eng_costthr,True,True,True,True,True,True,True,False,False
+rf_default,True,False,False,True,False,True,True,False,False
+xgb_default_eng,True,False,False,True,False,True,True,False,False
+rf_tuned_balanced_eng,True,True,True,True,False,True,True,False,False
+lgbm_balanced_eng,True,True,True,True,False,True,True,False,False
+lr_balanced_eng,True,True,True,True,False,True,True,False,False
+lr_balanced,True,True,True,True,False,True,True,False,False
+lr_smote_eng,True,True,True,True,False,True,True,False,False
+xgb_tuned_spw_eng,True,True,True,True,False,True,True,False,False

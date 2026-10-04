@@ -1,0 +1,20 @@
+.venv/
+.venv-airflow/
+.airflow/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.env
+
+# MLflow backend + artifacts (rebuilt by `make train`)
+mlflow.db
+mlartifacts/
+mlruns/
+
+# Data: raw file is pinned by sha256 in configs/config.yaml and re-downloaded by `make data`
+data/raw/*.csv
+data/interim/
+data/processed/
+reports/pipeline_state/
+data/simulated/

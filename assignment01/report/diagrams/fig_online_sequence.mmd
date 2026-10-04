@@ -1,0 +1,29 @@
+%%{init: {"theme": "base", "themeVariables": {"fontFamily": "Helvetica", "fontSize": "18px"}, "sequence": {"mirrorActors": false, "actorFontSize": 18, "messageFontSize": 18, "noteFontSize": 17, "actorMargin": 12, "width": 100, "height": 46, "boxMargin": 4, "messageMargin": 20, "bottomMarginAdj": 0}}}%%
+sequenceDiagram
+    participant A as CRM screen
+    participant G as Gateway
+    participant S as Churn API
+    participant M as Model
+    participant C as churn_scores
+    participant P as Prometheus
+
+    A->>G: POST /v1/churn/score
+    G->>S: forward, 300 ms timeout
+    S->>S: validate (Pydantic)
+    alt request invalid
+        S-->>A: 422 + field errors
+    else model healthy
+        S->>M: predict_proba(x)
+        M-->>S: p, top-3 reasons
+        S-->>A: 200 {probability, risk_band, reasons,<br/>model_version, fallback=false}
+    else model unavailable / timeout
+        S->>C: last weekly score
+        alt score ≤ 7 days old
+            C-->>S: cached score
+            S-->>A: 200 {..., fallback="last_batch"}
+        else no score
+            S->>S: rule scorecard
+            S-->>A: 200 {..., fallback="scorecard"}
+        end
+    end
+    S-)P: latency, fallback count

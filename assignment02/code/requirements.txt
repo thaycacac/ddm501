@@ -1,0 +1,12 @@
+# Runtime dependencies (pinned for reproducibility; Python 3.12).
+pandas==3.0.6
+numpy==2.5.3
+scikit-learn==1.9.1
+imbalanced-learn==0.14.2
+# Same XGBoost release; the Linux CPU-only wheel avoids ~300 MB of CUDA/NCCL libraries.
+xgboost==3.4.1; sys_platform != "linux"
+xgboost-cpu==3.4.1; sys_platform == "linux"
+lightgbm==4.7.0
+mlflow==3.16.1
+matplotlib==3.11.2
+PyYAML==6.0.3

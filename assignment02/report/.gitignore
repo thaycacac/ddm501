@@ -1,0 +1,5 @@
+!build/
+build/*.pdf
+build/*.html
+!build/template.html
+node_modules/

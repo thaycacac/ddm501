@@ -1,0 +1,36 @@
+digraph pipeline {
+    graph [rankdir=TB, fontname="Helvetica", fontsize=12, nodesep=0.5, ranksep=0.45, newrank=true, pad=0.15];
+    node  [fontname="Helvetica", fontsize=11, shape=box, style="rounded,filled", fillcolor="#e3f2fd", color="#1565c0", penwidth=1.2, width=2.0, height=0.85];
+    edge  [fontname="Helvetica", fontsize=9.5, color="#455a64", arrowsize=0.7];
+
+    s1 [label=<<b>① Ingestion</b><br/><font point-size="9.5">extract BSS / CRM / usage<br/>snapshot + SHA-256 hash</font>>];
+    s2 [label=<<b>② Validation</b><br/><font point-size="9.5">schema, ranges, nulls,<br/>label rate, drift vs ref.</font>>];
+    s3 [label=<<b>③ Preprocessing</b><br/><font point-size="9.5">type fixes, impute,<br/>dedupe, pseudonymise</font>>];
+    s4 [label=<<b>④ Feature engineering</b><br/><font point-size="9.5">one-hot, scaling,<br/>tenure band, #services</font>>];
+    s5 [label=<<b>⑤ Training</b><br/><font point-size="9.5">LogReg / RF / GBM,<br/>CV tuning, MLflow log</font>>];
+    s6 [label=<<b>⑥ Evaluation</b><br/><font point-size="9.5">hold-out, slices,<br/>calibration, vs champion</font>>];
+    s7 [label=<<b>⑦ Registry &amp; deploy</b><br/><font point-size="9.5">register version, alias,<br/>build Docker image</font>>];
+    s8 [label=<<b>⑧ Serving</b><br/><font point-size="9.5">weekly batch +<br/>FastAPI online</font>>];
+    s9 [label=<<b>⑨ Monitoring</b><br/><font point-size="9.5">latency, errors,<br/>data &amp; score drift</font>>];
+    q1 [label="quarantine snapshot,\nalert data owner", style="rounded,filled", fillcolor="#ffebee", color="#c62828", fontsize=9.5, width=1.5, height=0.5];
+    q2 [label="reject candidate,\nkeep champion", style="rounded,filled", fillcolor="#ffebee", color="#c62828", fontsize=9.5, width=1.5, height=0.5];
+
+    {rank=same; q1;}
+    {rank=same; s1; s2; s3;}
+    {rank=same; q2; s6; s5; s4;}
+    {rank=same; s7; s8; s9;}
+
+    q1 -> s2 [dir=back, label=" fail", color="#c62828", fontcolor="#c62828"];
+    s1 -> s2;
+    s2 -> s3 [label="pass"];
+    s3 -> s4;
+    s5 -> s4 [dir=back];
+    s6 -> s5 [dir=back];
+    q2 -> s6 [dir=back, label="fail", color="#c62828", fontcolor="#c62828"];
+    s6 -> s7 [label=" gates pass"];
+    s7 -> s8 -> s9;
+    s9 -> s1 [style=dashed, color="#2e7d32", constraint=false];
+    note [shape=plaintext, style="", fontsize=9.5, fontcolor="#2e7d32", label="retrain trigger (dashed):\nPSI > 0.2, AUC drop > 0.03,\nor monthly + matured labels"];
+    {rank=same; note; s7;}
+    note -> s7 [style=invis];
+}
